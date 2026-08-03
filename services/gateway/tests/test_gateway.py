@@ -3,6 +3,7 @@ import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./gwtest.db"
 os.environ["GATEWAY_KEYS"] = "good-key:1000,broke-key:0"
+os.environ["GATEWAY_BLOCKED_PATTERNS"] = r"\bpassword\b,ssn"
 os.environ.pop("UPSTREAM_BASE_URL", None)
 os.environ.pop("UPSTREAM_API_KEY", None)
 
@@ -47,6 +48,17 @@ def test_valid_key_no_upstream_is_honest_503(client):
     r = client.post("/v1/chat/completions", json=BODY, headers={"Authorization": "Bearer good-key"})
     assert r.status_code == 503
 
+
+def test_guardrail_blocks_matching_content(client):
+    body = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "my password is hunter2"}]}
+    r = client.post("/v1/chat/completions", json=body, headers={"Authorization": "Bearer good-key"})
+    assert r.status_code == 400  # blocked before upstream/503
+
+def test_guardrail_allows_clean_content(client):
+    # clean content passes auth + guardrail + budget, then 503 (no upstream) — proves it got past guardrail
+    body = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hello world"}]}
+    r = client.post("/v1/chat/completions", json=body, headers={"Authorization": "Bearer good-key"})
+    assert r.status_code == 503
 
 def test_usage_reports_real_budget(client):
     j = client.get("/v1/usage", headers={"Authorization": "Bearer good-key"}).json()

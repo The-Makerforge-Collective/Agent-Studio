@@ -22,6 +22,8 @@ import os
 import sys
 import time
 
+import re
+
 import httpx
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
@@ -34,6 +36,17 @@ UPSTREAM_API_KEY = os.environ.get("UPSTREAM_API_KEY", "")
 # comma list of key:budget_cents ; default one dev key with $10
 GATEWAY_KEYS = os.environ.get("GATEWAY_KEYS", "gw-dev-key:1000")
 PRICE_PER_1K_TOKENS_CENTS = float(os.environ.get("PRICE_PER_1K_TOKENS_CENTS", "0.2"))
+# content guardrails (FR-13.4): comma-separated regex patterns; a match blocks the request
+BLOCKED_PATTERNS = [re.compile(p.strip(), re.I)
+                    for p in os.environ.get("GATEWAY_BLOCKED_PATTERNS", "").split(",") if p.strip()]
+
+
+def _guardrail(messages: list[dict]) -> str | None:
+    text = " ".join(m.get("content", "") for m in messages if isinstance(m, dict))
+    for pat in BLOCKED_PATTERNS:
+        if pat.search(text):
+            return pat.pattern
+    return None
 
 _engine = create_engine(DATABASE_URL, future=True)
 
@@ -106,6 +119,11 @@ def usage(authorization: str | None = Header(default=None)) -> dict:
 @app.post("/v1/chat/completions")
 def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> dict:
     key = _auth(authorization)
+    # CONTENT GUARDRAIL (FR-13.4) — reject blocked content before it reaches a provider
+    hit = _guardrail(req.messages)
+    if hit:
+        _otel(key=key.api_key, model=req.model, status=400, reason="guardrail", pattern=hit)
+        raise HTTPException(400, "request blocked by content guardrail")
     # BUDGET enforcement BEFORE spend (fail-closed) — FR-13.1
     if key.spent_cents >= key.budget_cents:
         _otel(key=key.api_key, model=req.model, status=402, reason="budget_exhausted")
