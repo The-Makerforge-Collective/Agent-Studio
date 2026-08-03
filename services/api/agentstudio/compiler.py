@@ -17,6 +17,7 @@ NODE_CATALOG = {
     "retrieval": {"inputs": ["in"], "outputs": ["out"]},
     "subworkflow": {"inputs": ["in"], "outputs": ["out"]},
     "classifier": {"inputs": ["in"], "outputs": ["out"]},
+    "tool_call": {"inputs": ["in"], "outputs": ["out"]},
     "router": {"inputs": ["in"], "outputs": ["a", "b"]},
     "end": {"inputs": ["in"], "outputs": []},
 }
@@ -32,6 +33,7 @@ NODE_DOCS = {
     "retrieval": "Keyword search over tenant knowledge (config.query/query_from → config.as).",
     "subworkflow": "Runs another stored workflow (config.workflow_id), merging its output state.",
     "classifier": "Multi-way keyword classification into config.labels → config.as.",
+    "tool_call": "Calls a REST endpoint (config.method/url/body); projects config.project into config.as.",
     "router": "Boolean branch on config.when; activates config.true or config.false target.",
     "end": "Terminal node; collects final state.",
 }

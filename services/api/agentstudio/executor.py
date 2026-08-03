@@ -182,6 +182,50 @@ def _exec_subworkflow(node, state, sub_runner) -> dict[str, Any]:
     return {"ran": True, "workflow_id": wid, "output_keys": list(child_state.keys())}
 
 
+def _interp(v, state):
+    if isinstance(v, str):
+        try:
+            return v.format(**state)
+        except Exception:
+            return v
+    if isinstance(v, dict):
+        return {k: _interp(x, state) for k, x in v.items()}
+    return v
+
+
+def _project(data, path):
+    for part in path.split("."):
+        if isinstance(data, list) and part.lstrip("-").isdigit():
+            data = data[int(part)]
+        elif isinstance(data, dict):
+            data = data.get(part)
+        else:
+            return None
+    return data
+
+
+def _exec_tool_call(node, state) -> dict[str, Any]:
+    """Call a REST endpoint and thread the (optionally projected) response into state (FR-6.1)."""
+    url = node.config.get("url")
+    if not url:
+        raise ExecError("tool_call requires config.url")
+    import httpx
+    method = node.config.get("method", "GET").upper()
+    url = _interp(url, state)
+    headers = _interp(node.config.get("headers", {}), state)
+    body = _interp(node.config.get("body"), state) if node.config.get("body") is not None else None
+    resp = httpx.request(method, url, headers=headers,
+                         json=body if body is not None else None, timeout=30)
+    try:
+        data = resp.json()
+    except Exception:
+        data = resp.text
+    proj = node.config.get("project")
+    value = _project(data, proj) if proj and isinstance(data, (dict, list)) else data
+    state[node.config.get("as", "tool_result")] = value
+    return {"status": resp.status_code, "projected": value if proj else "(full body)"}
+
+
 def _exec_end(node, state) -> dict[str, Any]:
     return {"output": dict(state)}
 
@@ -191,6 +235,7 @@ EXECUTORS = {
     "transform": _exec_transform,
     "quality_gate": _exec_quality_gate,
     "classifier": _exec_classifier,
+    "tool_call": _exec_tool_call,
     "router": _exec_router,
     "agent": _exec_agent,
     "end": _exec_end,
