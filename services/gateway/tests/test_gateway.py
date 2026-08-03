@@ -2,8 +2,9 @@
 import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./gwtest.db"
-os.environ["GATEWAY_KEYS"] = "good-key:1000,broke-key:0"
+os.environ["GATEWAY_KEYS"] = "good-key:1000,broke-key:0,rate-key:1000"
 os.environ["GATEWAY_BLOCKED_PATTERNS"] = r"\bpassword\b,ssn"
+os.environ["GATEWAY_RATE_LIMIT_PER_MIN"] = "3"
 os.environ.pop("UPSTREAM_BASE_URL", None)
 os.environ.pop("UPSTREAM_API_KEY", None)
 
@@ -59,6 +60,14 @@ def test_guardrail_allows_clean_content(client):
     body = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hello world"}]}
     r = client.post("/v1/chat/completions", json=body, headers={"Authorization": "Bearer good-key"})
     assert r.status_code == 503
+
+def test_rate_limit_returns_429_over_threshold(client):
+    # limit is 3/min; a dedicated key's 4th request in the window is rejected
+    body = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}
+    h = {"Authorization": "Bearer rate-key"}
+    codes = [client.post("/v1/chat/completions", json=body, headers=h).status_code for _ in range(4)]
+    assert codes[:3] == [503, 503, 503]     # first 3 pass rate limit (then 503 no-upstream)
+    assert codes[3] == 429                   # 4th is rate-limited
 
 def test_usage_reports_real_budget(client):
     j = client.get("/v1/usage", headers={"Authorization": "Bearer good-key"}).json()

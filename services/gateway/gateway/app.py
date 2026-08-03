@@ -48,6 +48,24 @@ def _guardrail(messages: list[dict]) -> str | None:
             return pat.pattern
     return None
 
+
+# per-key rate limit (FR-13.5). Fixed-window; the window map is EPHEMERAL/rebuildable — losing it
+# just resets the window (acceptable for rate limiting; a multi-replica deploy would back it with Redis).
+RATE_LIMIT_PER_MIN = int(os.environ.get("GATEWAY_RATE_LIMIT_PER_MIN", "0"))
+_windows: dict[str, list] = {}
+
+
+def _rate_ok(api_key: str) -> bool:
+    if RATE_LIMIT_PER_MIN <= 0:
+        return True
+    now = time.time()
+    ws, cnt = _windows.get(api_key, [now, 0])
+    if now - ws >= 60:
+        ws, cnt = now, 0
+    cnt += 1
+    _windows[api_key] = [ws, cnt]
+    return cnt <= RATE_LIMIT_PER_MIN
+
 _engine = create_engine(DATABASE_URL, future=True)
 
 
@@ -119,6 +137,10 @@ def usage(authorization: str | None = Header(default=None)) -> dict:
 @app.post("/v1/chat/completions")
 def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> dict:
     key = _auth(authorization)
+    # RATE LIMIT (FR-13.5)
+    if not _rate_ok(key.api_key):
+        _otel(key=key.api_key, model=req.model, status=429, reason="rate_limited")
+        raise HTTPException(429, "rate limit exceeded")
     # CONTENT GUARDRAIL (FR-13.4) — reject blocked content before it reaches a provider
     hit = _guardrail(req.messages)
     if hit:

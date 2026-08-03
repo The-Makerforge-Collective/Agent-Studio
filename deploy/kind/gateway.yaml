@@ -19,6 +19,7 @@ spec:
               value: postgresql+psycopg2://agentstudio:agentstudio@postgres.agent-studio-system.svc:5432/agentstudio
             - { name: GATEWAY_KEYS, value: "gw-dev-key:1000" }
             - { name: GATEWAY_BLOCKED_PATTERNS, value: "\\bpassword\\b,ssn,secret-key" }  # content guardrail (FR-13.4)
+            - { name: GATEWAY_RATE_LIMIT_PER_MIN, value: "5" }  # per-key rate limit (FR-13.5)
             # UPSTREAM_BASE_URL / UPSTREAM_API_KEY intentionally unset — no external model creds in this env.
             # Set them (pointing at any OpenAI-compatible provider) to enable live completions.
           ports: [{ containerPort: 9000 }]
