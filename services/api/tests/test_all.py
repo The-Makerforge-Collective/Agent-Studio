@@ -171,6 +171,18 @@ def test_api_create_and_run(client, auth):
     assert '"y": 7' in r.text and "done" in r.text
 
 
+def test_deploy_surface_run_stored_workflow_by_id(client, auth):
+    wf = client.post("/api/v1/workflows", headers=auth, json={
+        "name": "invokable",
+        "spec": {"nodes": [{"id": "t", "type": "trigger_api"},
+                           {"id": "d", "type": "transform", "config": {"expr": "x * 2", "as": "y"}},
+                           {"id": "e", "type": "end"}],
+                 "edges": [{"source": "t", "target": "d"}, {"source": "d", "target": "e"}]}}).json()
+    # invoke by id with a seed — the stored spec runs, no inline spec needed
+    r = client.post(f"/api/v1/workflows/{wf['id']}/run", headers=auth, json={"seed": {"x": 21}})
+    assert '"y": 42' in r.text and "done" in r.text
+
+
 def test_run_trace_span_waterfall(client, auth):
     r = client.post("/api/v1/runs", headers=auth, json={
         "nodes": [{"id": "t", "type": "trigger_api"}, {"id": "e", "type": "end"}],

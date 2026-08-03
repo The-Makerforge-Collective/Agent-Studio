@@ -222,6 +222,20 @@ async def run_endpoint(req: RunRequest, p: Principal = Depends(require_role("edi
     return StreamingResponse(_run_stream(spec, req.seed, p.tenant_id), media_type="text/event-stream")
 
 
+class InvokeBody(BaseModel):
+    seed: dict[str, Any] = {}
+
+
+@app.post("/api/v1/workflows/{wid}/run")
+async def run_deployed_workflow(wid: str, body: InvokeBody,
+                                p: Principal = Depends(require_role("editor"))) -> StreamingResponse:
+    """Deploy surface (FR-10.1): invoke a stored workflow by id — the persisted spec is executed."""
+    with db.session() as s:
+        w = _owned_workflow(s, wid, p)
+        spec = Spec(**w.spec)
+    return StreamingResponse(_run_stream(spec, body.seed, p.tenant_id), media_type="text/event-stream")
+
+
 @app.get("/api/v1/runs")
 def list_runs(p: Principal = Depends(get_principal)) -> list[dict[str, Any]]:
     with db.session() as s:
