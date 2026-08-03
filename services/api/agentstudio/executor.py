@@ -118,6 +118,28 @@ def _exec_quality_gate(node, state) -> dict[str, Any]:
     return {"passed": True, "checks": results}
 
 
+def _exec_memory_write(node, state, memory, tenant) -> dict[str, Any]:
+    key, src = node.config.get("key"), node.config.get("from")
+    if not key or not src:
+        raise ExecError("memory_write requires config.key and config.from")
+    if memory is None or not tenant:
+        return {"stored": False, "note": "no memory store bound (local mode)"}
+    value = state.get(src)
+    memory.put(tenant, key, value)
+    return {"stored": True, "key": key, "value": value}
+
+
+def _exec_memory_read(node, state, memory, tenant) -> dict[str, Any]:
+    key = node.config.get("key")
+    if not key:
+        raise ExecError("memory_read requires config.key")
+    if memory is None or not tenant:
+        return {"read": False, "note": "no memory store bound (local mode)"}
+    value = memory.get(tenant, key)
+    state[node.config.get("as", key)] = value
+    return {"read": True, "key": key, "value": value}
+
+
 def _exec_end(node, state) -> dict[str, Any]:
     return {"output": dict(state)}
 
@@ -133,9 +155,11 @@ EXECUTORS = {
 
 
 def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
-                 runtime=None, namespace: str | None = None) -> Iterator[dict[str, Any]]:
+                 runtime=None, namespace: str | None = None,
+                 memory=None, tenant_id: str | None = None) -> Iterator[dict[str, Any]]:
     """Execute the compiled workflow, yielding event dicts. Real state threading + routing.
-    `cli` nodes execute as Substrate actor pods in `namespace` when a runtime is bound."""
+    `cli` nodes execute as Substrate actor pods in `namespace` when a runtime is bound;
+    `memory_*` nodes use the bound memory store, scoped to `tenant_id`."""
     compiled = compile_spec(spec)
     if not compiled["ok"]:
         yield {"event": "error", "errors": compiled["errors"]}
@@ -161,6 +185,10 @@ def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
         try:
             if node.type == "cli":
                 result = _exec_cli(node, state, runtime, namespace)
+            elif node.type == "memory_write":
+                result = _exec_memory_write(node, state, memory, tenant_id)
+            elif node.type == "memory_read":
+                result = _exec_memory_read(node, state, memory, tenant_id)
             else:
                 result = EXECUTORS[node.type](node, state)
         except Exception as e:

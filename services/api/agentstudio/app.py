@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import db, k8s, runtimeport
+from . import db, k8s, memory, runtimeport
 from .auth import (Principal, create_token, get_principal, hash_password,
                    require_role, verify_password)
 from .compiler import NODE_CATALOG, Spec, compile_spec
@@ -188,10 +188,12 @@ async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
                    "status": recon.get("status")})
 
     yield sse({"event": "run", "run_id": run_id, "status": "accepted"})
+    mem = memory.PgMemory()
     starts: dict[str, tuple[float, str]] = {}
     seq = 0
     final_status = "completed"
-    for ev in run_workflow(spec, seed, runtime=runtime, namespace=namespace):
+    for ev in run_workflow(spec, seed, runtime=runtime, namespace=namespace,
+                           memory=mem, tenant_id=tenant_id):
         et = ev.get("event")
         if et == "node_start":
             starts[ev["node"]] = (time.time(), ev.get("type", ""))

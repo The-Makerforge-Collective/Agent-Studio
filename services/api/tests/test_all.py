@@ -122,6 +122,43 @@ def test_quality_gate_blocks_run_on_failure():
     assert not any(e.get("node") == "e" and e["event"] == "node_start" for e in events)  # end never ran
 
 
+def test_memory_write_then_read_across_runs():
+    # a real in-process store (dict-backed) implementing the memory port — persists across runs
+    class DictMemory:
+        def __init__(self): self.d = {}
+        def put(self, tenant, key, value): self.d[(tenant, key)] = value
+        def get(self, tenant, key): return self.d.get((tenant, key))
+    mem = DictMemory()
+    # run 1: compute and persist to memory
+    w = _spec([("t", "trigger_api", {"seed": {"x": 5}}),
+               ("d", "transform", {"expr": "x * 3", "as": "y"}),
+               ("m", "memory_write", {"key": "last_y", "from": "y"})],
+              [("t", "d"), ("d", "m")])
+    list(run_workflow(w, memory=mem, tenant_id="acme"))
+    # run 2: read it back
+    r = _spec([("t", "trigger_api", None),
+               ("m", "memory_read", {"key": "last_y", "as": "recalled"}),
+               ("e", "end", None)],
+              [("t", "m"), ("m", "e")])
+    done = [e for e in run_workflow(r, memory=mem, tenant_id="acme") if e["event"] == "done"][0]
+    assert done["state"]["recalled"] == 15
+
+
+def test_memory_is_tenant_scoped():
+    class DictMemory:
+        def __init__(self): self.d = {}
+        def put(self, tenant, key, value): self.d[(tenant, key)] = value
+        def get(self, tenant, key): return self.d.get((tenant, key))
+    mem = DictMemory()
+    w = _spec([("t", "trigger_api", {"seed": {"v": 1}}), ("m", "memory_write", {"key": "k", "from": "v"})],
+              [("t", "m")])
+    list(run_workflow(w, memory=mem, tenant_id="acme"))
+    r = _spec([("t", "trigger_api", None), ("m", "memory_read", {"key": "k", "as": "got"}), ("e", "end", None)],
+              [("t", "m"), ("m", "e")])
+    done = [e for e in run_workflow(r, memory=mem, tenant_id="globex") if e["event"] == "done"][0]
+    assert done["state"]["got"] is None  # other tenant sees nothing
+
+
 def test_run_agent_without_credentials_is_honest_not_mock():
     spec = _spec([("t", "trigger_api", None), ("a", "agent", {"prompt": "hi"})], [("t", "a")])
     events = list(run_workflow(spec))

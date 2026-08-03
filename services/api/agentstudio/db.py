@@ -81,6 +81,16 @@ class Run(Base):
     started_at: Mapped[float] = mapped_column(default=lambda: time.time())
 
 
+class Memory(Base):
+    """Agent memory substrate (FR-7.5) — tenant-scoped key/value, latest-wins on read."""
+    __tablename__ = "memories"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_ulid)
+    tenant_id: Mapped[str] = mapped_column(String, index=True)
+    mkey: Mapped[str] = mapped_column(String, index=True)
+    value: Mapped[Any] = mapped_column(JSON)
+    created_at: Mapped[float] = mapped_column(default=lambda: time.time())
+
+
 class RunNode(Base):
     """Per-node span for the run's span waterfall (FR-9.1)."""
     __tablename__ = "run_nodes"
@@ -132,5 +142,5 @@ def session() -> Session:
     return Session(_engine, future=True)
 
 
-__all__ = ["Tenant", "User", "Membership", "Workflow", "Deployment", "Run", "RunNode",
+__all__ = ["Tenant", "User", "Membership", "Workflow", "Deployment", "Run", "RunNode", "Memory",
            "init_db", "session", "select", "DATABASE_URL"]

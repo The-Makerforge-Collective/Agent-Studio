@@ -12,6 +12,8 @@ NODE_CATALOG = {
     "transform": {"inputs": ["in"], "outputs": ["out"]},
     "cli": {"inputs": ["in"], "outputs": ["out"]},
     "quality_gate": {"inputs": ["in"], "outputs": ["out"]},
+    "memory_write": {"inputs": ["in"], "outputs": ["out"]},
+    "memory_read": {"inputs": ["in"], "outputs": ["out"]},
     "router": {"inputs": ["in"], "outputs": ["a", "b"]},
     "end": {"inputs": ["in"], "outputs": []},
 }
