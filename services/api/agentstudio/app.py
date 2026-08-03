@@ -277,6 +277,22 @@ def _collect_run(spec: Spec, seed: dict[str, Any], tenant_id: str) -> tuple[str,
     return status, final
 
 
+def _persist_pause(ev: dict, spec: Spec, tenant_id: str, run_id: str) -> str:
+    """Persist a durable HITL pause and mark the run paused (§5.7). Returns the request id."""
+    with db.session() as s:
+        ar = db.ApprovalRequest(tenant_id=tenant_id, run_id=run_id, node_id=ev["node"],
+                                context={"spec": spec.model_dump(), "reached": ev["reached"],
+                                         "executed": ev["executed"], "state": ev["state"],
+                                         "node": ev["node"]})
+        s.add(ar)
+        s.flush()
+        r = s.get(db.Run, run_id)
+        if r:
+            r.status = "paused"
+        s.commit()
+        return ar.id
+
+
 async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
     def sse(ev: dict) -> str:
         return f"event: {ev['event']}\ndata: {json.dumps({k: v for k, v in ev.items() if k != 'event'})}\n\n"
@@ -307,6 +323,11 @@ async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
                            memory=mem, tenant_id=tenant_id, knowledge=know,
                            sub_runner=sub_runner):
         et = ev.get("event")
+        if et == "paused":
+            req_id = _persist_pause(ev, spec, tenant_id, run_id)
+            yield sse({"event": "paused", "run_id": run_id, "request_id": req_id,
+                       "node": ev["node"], "message": "awaiting approval"})
+            return                                        # run is paused durably
         if et == "node_start":
             starts[ev["node"]] = (time.time(), ev.get("type", ""))
         elif et == "node_end":
@@ -412,6 +433,68 @@ def list_runs(p: Principal = Depends(get_principal)) -> list[dict[str, Any]]:
     with db.session() as s:
         rows = s.scalars(db.select(db.Run).where(db.Run.tenant_id == p.tenant_id)).all()
         return [{"id": r.id, "status": r.status, "started_at": r.started_at} for r in rows]
+
+
+class ApproveBody(BaseModel):
+    request_id: str
+    decision: str = "approve"           # approve | reject
+
+
+@app.get("/api/v1/runs/{run_id}/approvals")
+def list_pending_approvals(run_id: str, p: Principal = Depends(get_principal)) -> list[dict[str, Any]]:
+    with db.session() as s:
+        rows = s.scalars(db.select(db.ApprovalRequest).where(
+            db.ApprovalRequest.run_id == run_id, db.ApprovalRequest.tenant_id == p.tenant_id)).all()
+        return [{"request_id": a.id, "node": a.node_id, "state": a.state} for a in rows]
+
+
+@app.post("/api/v1/runs/{run_id}/approve")
+def approve_run(run_id: str, body: ApproveBody,
+                p: Principal = Depends(require_role("editor"))) -> dict[str, Any]:
+    """Approve/reject a paused run (§5.7). Approve resumes from the pause with no re-execution."""
+    with db.session() as s:
+        ar = s.get(db.ApprovalRequest, body.request_id)
+        if not ar or ar.tenant_id != p.tenant_id or ar.run_id != run_id:
+            raise HTTPException(404, "approval request not found")
+        if ar.state != "pending":
+            raise HTTPException(409, f"already {ar.state}")
+        ctx = ar.context
+        if body.decision == "reject":
+            ar.state = "rejected"
+            r = s.get(db.Run, run_id)
+            if r:
+                r.status = "rejected"
+            s.commit()
+            return {"decision": "rejected", "run_id": run_id, "status": "rejected"}
+        ar.state = "approved"
+        s.commit()
+
+    # resume from the pause point (no re-execution of already-run nodes)
+    spec = Spec(**ctx["spec"])
+    resume = {"reached": ctx["reached"], "executed": ctx["executed"],
+              "state": ctx["state"], "approved": [ctx["node"]]}
+    runtime = runtimeport.bind()
+    namespace = None
+    if _has_cli(spec) and runtime is not None:
+        namespace = k8s.reconcile_agent_namespace(p.tenant_id).get("namespace")
+    mem, know = memory.PgMemory(), knowledge_mod.PgKnowledge()
+    status, final = "completed", {}
+    for ev in run_workflow(spec, resume=resume, runtime=runtime, namespace=namespace, memory=mem,
+                           tenant_id=p.tenant_id, knowledge=know,
+                           sub_runner=_make_sub_runner(p.tenant_id, mem, know, runtime, namespace, 0)):
+        if ev.get("event") == "done":
+            final = ev.get("state", {})
+        elif ev.get("event") == "error":
+            status = "failed"
+        elif ev.get("event") == "paused":            # another gate downstream → new pending request
+            req2 = _persist_pause(ev, spec, p.tenant_id, run_id)
+            return {"decision": "approved", "run_id": run_id, "status": "paused", "request_id": req2}
+    with db.session() as s:
+        r = s.get(db.Run, run_id)
+        if r:
+            r.status = status
+        s.commit()
+    return {"decision": "approved", "run_id": run_id, "status": status, "state": final}
 
 
 @app.get("/api/v1/runs/{run_id}/trace")

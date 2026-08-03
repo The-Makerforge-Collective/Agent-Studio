@@ -279,10 +279,11 @@ EXECUTORS = {
 def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
                  runtime=None, namespace: str | None = None,
                  memory=None, tenant_id: str | None = None,
-                 knowledge=None, sub_runner=None) -> Iterator[dict[str, Any]]:
+                 knowledge=None, sub_runner=None, resume=None) -> Iterator[dict[str, Any]]:
     """Execute the compiled workflow, yielding event dicts. Real state threading + routing.
-    `cli` nodes execute as Substrate actor pods in `namespace` when a runtime is bound;
-    `memory_*` nodes use the bound memory store, scoped to `tenant_id`."""
+    `cli` nodes execute as Substrate actor pods; `memory_*`/`retrieval` use the bound stores.
+    An `approval` node pauses the run (yields `paused` + resume context) until approved; passing
+    `resume={reached,executed,state,approved}` continues from the pause with NO re-execution."""
     compiled = compile_spec(spec)
     if not compiled["ok"]:
         yield {"event": "error", "errors": compiled["errors"]}
@@ -295,8 +296,14 @@ def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
         out_edges[e.source].append(e.target)
 
     roots = {nid for nid in by_id if all(e.target != nid for e in spec.edges)}
-    reached: set[str] = set(roots)
-    state: dict[str, Any] = dict(seed or {})
+    if resume:
+        reached = set(resume["reached"])
+        executed = set(resume["executed"])
+        state = dict(resume["state"])
+        approved = set(resume.get("approved", []))
+    else:
+        reached, executed, approved = set(roots), set(), set()
+        state = dict(seed or {})
 
     yield {"event": "run", "status": "started", "order": order}
     for nid in order:
@@ -304,9 +311,18 @@ def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
         if nid not in reached:
             yield {"event": "node_skip", "node": nid, "reason": "inactive branch"}
             continue
+        if nid in executed:
+            continue                        # already ran before the pause — don't re-execute
+        if node.type == "approval" and nid not in approved:
+            # durable pause (§5.7): stop and hand the resume context to the caller
+            yield {"event": "paused", "node": nid, "reached": sorted(reached),
+                   "executed": sorted(executed), "state": state}
+            return
         yield {"event": "node_start", "node": nid, "type": node.type}
         try:
-            if node.type == "cli":
+            if node.type == "approval":
+                result = {"approved": True, "by": approved and "human" or "auto"}
+            elif node.type == "cli":
                 result = _exec_cli(node, state, runtime, namespace)
             elif node.type == "memory_write":
                 result = _exec_memory_write(node, state, memory, tenant_id)
@@ -332,6 +348,7 @@ def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
             targets = out_edges[nid]
         for t in targets:
             reached.add(t)
+        executed.add(nid)
         yield {"event": "messages", "node": nid, "result": result}
         yield {"event": "node_end", "node": nid, "status": "ok"}
     yield {"event": "done", "status": "completed", "state": state}

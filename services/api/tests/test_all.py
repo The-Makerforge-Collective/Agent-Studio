@@ -321,6 +321,48 @@ def test_scheduler_tick_fires_due_workflow(client, auth):
     assert sch["id"] not in _tick(time.time() + 1)
 
 
+APPROVAL_SPEC = {
+    "nodes": [{"id": "t", "type": "trigger_api", "config": {"seed": {"x": 3}}},
+              {"id": "d", "type": "transform", "config": {"expr": "x * 2", "as": "y"}},
+              {"id": "a", "type": "approval"},
+              {"id": "f", "type": "transform", "config": {"expr": "y + 1", "as": "z"}},
+              {"id": "e", "type": "end"}],
+    "edges": [{"source": "t", "target": "d"}, {"source": "d", "target": "a"},
+              {"source": "a", "target": "f"}, {"source": "f", "target": "e"}]}
+
+
+def _start_and_pause(client, auth):
+    r = client.post("/api/v1/runs", headers=auth, json=APPROVAL_SPEC)
+    ev = [json.loads(l.split("data:", 1)[1]) for l in r.text.splitlines()
+          if l.startswith("data:") and "request_id" in l][0]
+    return ev["run_id"], ev["request_id"]
+
+
+def test_approval_pauses_run(client, auth):
+    run_id, req = _start_and_pause(client, auth)
+    assert req                                            # run paused at the approval node
+    pend = client.get(f"/api/v1/runs/{run_id}/approvals", headers=auth).json()
+    assert pend[0]["state"] == "pending" and pend[0]["node"] == "a"
+
+
+def test_approval_approve_resumes_without_reexecution(client, auth):
+    run_id, req = _start_and_pause(client, auth)
+    res = client.post(f"/api/v1/runs/{run_id}/approve", headers=auth,
+                      json={"request_id": req, "decision": "approve"}).json()
+    assert res["status"] == "completed"
+    assert res["state"]["z"] == 7                         # y(6)+1, downstream ran after resume
+    # re-approving is rejected (single-use)
+    assert client.post(f"/api/v1/runs/{run_id}/approve", headers=auth,
+                       json={"request_id": req, "decision": "approve"}).status_code == 409
+
+
+def test_approval_reject_fails_run(client, auth):
+    run_id, req = _start_and_pause(client, auth)
+    res = client.post(f"/api/v1/runs/{run_id}/approve", headers=auth,
+                      json={"request_id": req, "decision": "reject"}).json()
+    assert res["status"] == "rejected"
+
+
 def test_deploy_surface_run_stored_workflow_by_id(client, auth):
     wf = client.post("/api/v1/workflows", headers=auth, json={
         "name": "invokable",

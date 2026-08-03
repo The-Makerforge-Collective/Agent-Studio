@@ -101,6 +101,18 @@ class Memory(Base):
     created_at: Mapped[float] = mapped_column(default=lambda: time.time())
 
 
+class ApprovalRequest(Base):
+    """Durable human-in-the-loop pause (§5.7). Holds the resume context until a yes/no decision."""
+    __tablename__ = "approval_requests"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_ulid)
+    tenant_id: Mapped[str] = mapped_column(String, index=True)
+    run_id: Mapped[str] = mapped_column(String, index=True)
+    node_id: Mapped[str] = mapped_column(String)
+    state: Mapped[str] = mapped_column(String, default="pending")  # pending/approved/rejected
+    context: Mapped[Any] = mapped_column(JSON)                      # {spec, reached, executed, state}
+    created_at: Mapped[float] = mapped_column(default=lambda: time.time())
+
+
 class Schedule(Base):
     """Scheduled trigger (FR-10.2) — fires a workflow every interval_seconds."""
     __tablename__ = "schedules"
@@ -165,4 +177,4 @@ def session() -> Session:
 
 
 __all__ = ["Tenant", "User", "Membership", "Workflow", "Deployment", "Run", "RunNode", "Memory",
-           "KnowledgeChunk", "Schedule", "init_db", "session", "select", "DATABASE_URL"]
+           "KnowledgeChunk", "Schedule", "ApprovalRequest", "init_db", "session", "select", "DATABASE_URL"]
