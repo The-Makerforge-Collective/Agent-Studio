@@ -11,6 +11,7 @@ NODE_CATALOG = {
     "agent": {"inputs": ["in"], "outputs": ["out"]},
     "transform": {"inputs": ["in"], "outputs": ["out"]},
     "cli": {"inputs": ["in"], "outputs": ["out"]},
+    "quality_gate": {"inputs": ["in"], "outputs": ["out"]},
     "router": {"inputs": ["in"], "outputs": ["a", "b"]},
     "end": {"inputs": ["in"], "outputs": []},
 }

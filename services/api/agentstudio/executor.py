@@ -97,6 +97,27 @@ def _exec_cli(node, state, runtime, namespace) -> dict[str, Any]:
     return {"ran": True, "actor": res.get("actor"), "phase": res.get("phase"), "logs": logs}
 
 
+def _exec_quality_gate(node, state) -> dict[str, Any]:
+    """Hard gate (FR-8.4): every check predicate must pass or the run fails at this node."""
+    checks = node.config.get("checks", [])
+    if not isinstance(checks, list) or not checks:
+        raise ExecError("quality_gate requires config.checks (a non-empty list)")
+    results = []
+    for c in checks:
+        expr = c.get("expr")
+        if not expr:
+            raise ExecError("each check needs an 'expr'")
+        try:
+            passed = bool(evaluate(expr, state))
+        except ExprError as e:
+            raise ExecError(str(e)) from e
+        results.append({"name": c.get("name", expr), "passed": passed})
+    failed = [r["name"] for r in results if not r["passed"]]
+    if failed:
+        raise ExecError(f"quality gate failed: {', '.join(failed)}")
+    return {"passed": True, "checks": results}
+
+
 def _exec_end(node, state) -> dict[str, Any]:
     return {"output": dict(state)}
 
@@ -104,6 +125,7 @@ def _exec_end(node, state) -> dict[str, Any]:
 EXECUTORS = {
     "trigger_api": _exec_trigger,
     "transform": _exec_transform,
+    "quality_gate": _exec_quality_gate,
     "router": _exec_router,
     "agent": _exec_agent,
     "end": _exec_end,

@@ -102,6 +102,26 @@ def test_cli_executes_via_bound_runtime():
     assert "from-actor" in done["state"]["o"]
 
 
+def test_quality_gate_passes_and_continues():
+    spec = _spec([("t", "trigger_api", {"seed": {"score": 90}}),
+                  ("g", "quality_gate", {"checks": [{"name": "score>=80", "expr": "score >= 80"}]}),
+                  ("e", "end", None)],
+                 [("t", "g"), ("g", "e")])
+    events = list(run_workflow(spec))
+    assert any(e["event"] == "done" for e in events)                 # gate passed → reached end
+    assert not any(e["event"] == "error" for e in events)
+
+
+def test_quality_gate_blocks_run_on_failure():
+    spec = _spec([("t", "trigger_api", {"seed": {"score": 40}}),
+                  ("g", "quality_gate", {"checks": [{"name": "score>=80", "expr": "score >= 80"}]}),
+                  ("e", "end", None)],
+                 [("t", "g"), ("g", "e")])
+    events = list(run_workflow(spec))
+    assert any(e["event"] == "error" for e in events)                # gate failed → run blocked
+    assert not any(e.get("node") == "e" and e["event"] == "node_start" for e in events)  # end never ran
+
+
 def test_run_agent_without_credentials_is_honest_not_mock():
     spec = _spec([("t", "trigger_api", None), ("a", "agent", {"prompt": "hi"})], [("t", "a")])
     events = list(run_workflow(spec))
