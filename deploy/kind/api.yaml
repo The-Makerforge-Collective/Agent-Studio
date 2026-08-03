@@ -3,7 +3,18 @@ kind: Namespace
 metadata:
   name: agent-studio-system
 ---
-# --- Tier-1 Postgres (control-plane DB) ---
+# --- Tier-1 Postgres (control-plane DB) — persistent via PVC ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: agent-studio-system
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -11,6 +22,7 @@ metadata:
   namespace: agent-studio-system
 spec:
   replicas: 1
+  strategy: { type: Recreate }          # RWO volume can't be shared across a rolling pair
   selector: { matchLabels: { app: postgres } }
   template:
     metadata: { labels: { app: postgres } }
@@ -24,9 +36,14 @@ spec:
             - { name: POSTGRES_DB, value: agentstudio }
             - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
           ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
           readinessProbe:
             exec: { command: ["pg_isready", "-U", "agentstudio"] }
             initialDelaySeconds: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: postgres-data }
 ---
 apiVersion: v1
 kind: Service
@@ -96,7 +113,7 @@ spec:
             - { name: JWT_SECRET, value: "dev-jwt-secret-please-rotate-in-prod-000" }
             - { name: BOOTSTRAP_ADMIN_EMAIL, value: "admin@agentstudio.dev" }
             - { name: BOOTSTRAP_ADMIN_PASSWORD, value: "admin12345" }
-            - { name: DEV_RESET_DB, value: "1" }
+            - { name: DEV_RESET_DB, value: "0" }     # persist across redeploys (additive create_all)
             # OIDC/SSO via Keycloak (primary auth path; local HS256 remains the dual-issuer fallback)
             - { name: OIDC_JWKS_URL, value: "http://keycloak.agent-studio-system.svc:8083/realms/agent-studio/protocol/openid-connect/certs" }
             - { name: OIDC_ISSUER, value: "http://keycloak.agent-studio-system.svc:8083/realms/agent-studio" }
