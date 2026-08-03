@@ -152,6 +152,22 @@ def _exec_retrieval(node, state, knowledge, tenant) -> dict[str, Any]:
     return {"retrieved": True, "hits": len(hits), "results": hits}
 
 
+def _exec_subworkflow(node, state, sub_runner) -> dict[str, Any]:
+    """Run another stored workflow as a step (§5), merging its output state back."""
+    wid = node.config.get("workflow_id")
+    if not wid:
+        raise ExecError("subworkflow requires config.workflow_id")
+    if sub_runner is None:
+        return {"ran": False, "note": "no subworkflow runner bound (local mode)"}
+    child_state = sub_runner(wid, dict(state))
+    out_as = node.config.get("output_as")
+    if out_as:
+        state[out_as] = child_state
+    else:
+        state.update(child_state)
+    return {"ran": True, "workflow_id": wid, "output_keys": list(child_state.keys())}
+
+
 def _exec_end(node, state) -> dict[str, Any]:
     return {"output": dict(state)}
 
@@ -169,7 +185,7 @@ EXECUTORS = {
 def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
                  runtime=None, namespace: str | None = None,
                  memory=None, tenant_id: str | None = None,
-                 knowledge=None) -> Iterator[dict[str, Any]]:
+                 knowledge=None, sub_runner=None) -> Iterator[dict[str, Any]]:
     """Execute the compiled workflow, yielding event dicts. Real state threading + routing.
     `cli` nodes execute as Substrate actor pods in `namespace` when a runtime is bound;
     `memory_*` nodes use the bound memory store, scoped to `tenant_id`."""
@@ -204,6 +220,8 @@ def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
                 result = _exec_memory_read(node, state, memory, tenant_id)
             elif node.type == "retrieval":
                 result = _exec_retrieval(node, state, knowledge, tenant_id)
+            elif node.type == "subworkflow":
+                result = _exec_subworkflow(node, state, sub_runner)
             else:
                 result = EXECUTORS[node.type](node, state)
         except Exception as e:

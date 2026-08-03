@@ -207,11 +207,33 @@ async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
     yield sse({"event": "run", "run_id": run_id, "status": "accepted"})
     mem = memory.PgMemory()
     know = knowledge_mod.PgKnowledge()
+
+    def make_sub_runner(depth: int):
+        def run(wid: str, child_seed: dict[str, Any]) -> dict[str, Any]:
+            if depth >= 5:
+                raise RuntimeError("subworkflow recursion depth limit (5) exceeded")
+            with db.session() as s:
+                w = s.get(db.Workflow, wid)
+                if not w or w.tenant_id != tenant_id:      # tenant-scoped: no cross-tenant calls
+                    raise RuntimeError(f"subworkflow {wid} not found")
+                child_spec = Spec(**w.spec)
+            final: dict[str, Any] = {}
+            for cev in run_workflow(child_spec, child_seed, runtime=runtime, namespace=namespace,
+                                    memory=mem, tenant_id=tenant_id, knowledge=know,
+                                    sub_runner=make_sub_runner(depth + 1)):
+                if cev.get("event") == "done":
+                    final = cev.get("state", {})
+                elif cev.get("event") == "error":
+                    raise RuntimeError(f"subworkflow {wid} failed: {cev.get('errors')}")
+            return final
+        return run
+
     starts: dict[str, tuple[float, str]] = {}
     seq = 0
     final_status = "completed"
     for ev in run_workflow(spec, seed, runtime=runtime, namespace=namespace,
-                           memory=mem, tenant_id=tenant_id, knowledge=know):
+                           memory=mem, tenant_id=tenant_id, knowledge=know,
+                           sub_runner=make_sub_runner(0)):
         et = ev.get("event")
         if et == "node_start":
             starts[ev["node"]] = (time.time(), ev.get("type", ""))

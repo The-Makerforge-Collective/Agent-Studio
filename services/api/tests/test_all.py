@@ -159,6 +159,31 @@ def test_memory_is_tenant_scoped():
     assert done["state"]["got"] is None  # other tenant sees nothing
 
 
+def test_subworkflow_runs_child_and_merges_state():
+    # child workflow doubles x into y; a real sub_runner runs it via run_workflow
+    child = _spec([("t", "trigger_api", None),
+                   ("d", "transform", {"expr": "x * 2", "as": "y"}), ("e", "end", None)],
+                  [("t", "d"), ("d", "e")])
+
+    def sub_runner(wid, seed):
+        assert wid == "child-1"
+        return [e for e in run_workflow(child, seed) if e["event"] == "done"][0]["state"]
+
+    parent = _spec([("t", "trigger_api", {"seed": {"x": 6}}),
+                    ("s", "subworkflow", {"workflow_id": "child-1"}), ("e", "end", None)],
+                   [("t", "s"), ("s", "e")])
+    done = [e for e in run_workflow(parent, sub_runner=sub_runner) if e["event"] == "done"][0]
+    assert done["state"]["y"] == 12          # child's output merged into parent state
+
+
+def test_subworkflow_honest_without_runner():
+    parent = _spec([("t", "trigger_api", None), ("s", "subworkflow", {"workflow_id": "x"})],
+                   [("t", "s")])
+    events = list(run_workflow(parent))       # no runner bound
+    msg = [e for e in events if e["event"] == "messages" and e["node"] == "s"][0]
+    assert msg["result"]["ran"] is False
+
+
 def test_run_agent_without_credentials_is_honest_not_mock():
     spec = _spec([("t", "trigger_api", None), ("a", "agent", {"prompt": "hi"})], [("t", "a")])
     events = list(run_workflow(spec))
