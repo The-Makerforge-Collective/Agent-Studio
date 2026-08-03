@@ -1,0 +1,61 @@
+# Agent Substrate — actor runtime (§7.12), deployed alongside the control plane
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: substrate
+  namespace: agent-studio-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-substrate-actors
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, create, delete]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-substrate-actors
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agent-substrate-actors
+subjects:
+  - kind: ServiceAccount
+    name: substrate
+    namespace: agent-studio-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: substrate
+  namespace: agent-studio-system
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: substrate } }
+  template:
+    metadata: { labels: { app: substrate } }
+    spec:
+      serviceAccountName: substrate
+      containers:
+        - name: substrate
+          image: agent-studio/substrate:dev
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 9100 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9100 }
+            initialDelaySeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: substrate
+  namespace: agent-studio-system
+spec:
+  selector: { app: substrate }
+  ports: [{ port: 9100, targetPort: 9100 }]

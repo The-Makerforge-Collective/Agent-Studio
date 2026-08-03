@@ -1,0 +1,41 @@
+# Keycloak — OIDC/SSO identity provider (FR-12.5). Dev-mode, realm imported from a ConfigMap.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: agent-studio-system
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: keycloak } }
+  template:
+    metadata: { labels: { app: keycloak } }
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.0
+          args: ["start-dev", "--import-realm", "--http-port=8083"]
+          env:
+            - { name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin }
+            - { name: KC_BOOTSTRAP_ADMIN_PASSWORD, value: admin }
+            - { name: KC_HEALTH_ENABLED, value: "true" }
+            - { name: KC_HTTP_ENABLED, value: "true" }
+          ports: [{ containerPort: 8083 }]
+          volumeMounts:
+            - { name: realm, mountPath: /opt/keycloak/data/import, readOnly: true }
+          readinessProbe:
+            httpGet: { path: /realms/agent-studio, port: 8083 }
+            initialDelaySeconds: 25
+            periodSeconds: 5
+            failureThreshold: 40
+      volumes:
+        - name: realm
+          configMap: { name: keycloak-realm }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: agent-studio-system
+spec:
+  selector: { app: keycloak }
+  ports: [{ port: 8083, targetPort: 8083 }]
