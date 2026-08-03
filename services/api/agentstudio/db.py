@@ -101,6 +101,18 @@ class Memory(Base):
     created_at: Mapped[float] = mapped_column(default=lambda: time.time())
 
 
+class Schedule(Base):
+    """Scheduled trigger (FR-10.2) — fires a workflow every interval_seconds."""
+    __tablename__ = "schedules"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_ulid)
+    tenant_id: Mapped[str] = mapped_column(String, index=True)
+    workflow_id: Mapped[str] = mapped_column(String)
+    interval_seconds: Mapped[int] = mapped_column(default=60)
+    next_fire_at: Mapped[float] = mapped_column(default=0.0)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    last_run_id: Mapped[str] = mapped_column(String, default="")
+
+
 class RunNode(Base):
     """Per-node span for the run's span waterfall (FR-9.1)."""
     __tablename__ = "run_nodes"
@@ -153,4 +165,4 @@ def session() -> Session:
 
 
 __all__ = ["Tenant", "User", "Membership", "Workflow", "Deployment", "Run", "RunNode", "Memory",
-           "KnowledgeChunk", "init_db", "session", "select", "DATABASE_URL"]
+           "KnowledgeChunk", "Schedule", "init_db", "session", "select", "DATABASE_URL"]

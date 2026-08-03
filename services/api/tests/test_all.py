@@ -1,4 +1,5 @@
 """Real tests — no mocks. Exercises the evaluator, execution engine, compiler, and HTTP API."""
+import time
 import json
 import os
 
@@ -261,6 +262,23 @@ def test_api_create_and_run(client, auth):
                   {"id": "e", "type": "end"}],
         "edges": [{"source": "t", "target": "d"}, {"source": "d", "target": "e"}]})
     assert '"y": 7' in r.text and "done" in r.text
+
+
+def test_scheduler_tick_fires_due_workflow(client, auth):
+    wf = client.post("/api/v1/workflows", headers=auth, json={
+        "name": "scheduled",
+        "spec": {"nodes": [{"id": "t", "type": "trigger_api"}, {"id": "e", "type": "end"}],
+                 "edges": [{"source": "t", "target": "e"}]}}).json()
+    sch = client.post("/api/v1/schedules", headers=auth,
+                      json={"workflow_id": wf["id"], "interval_seconds": 60}).json()
+    before = len(client.get("/api/v1/runs", headers=auth).json())
+    from agentstudio.app import _tick
+    fired = _tick(time.time() + 1)                        # advance clock past next_fire_at
+    assert sch["id"] in fired
+    after = len(client.get("/api/v1/runs", headers=auth).json())
+    assert after == before + 1                            # the scheduled run was recorded
+    # firing again immediately does nothing (next_fire_at advanced)
+    assert sch["id"] not in _tick(time.time() + 1)
 
 
 def test_deploy_surface_run_stored_workflow_by_id(client, auth):

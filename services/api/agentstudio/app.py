@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from typing import Any
 
@@ -27,6 +28,43 @@ app = FastAPI(title="Agent Studio — Control Plane")
 @app.on_event("startup")
 def _startup() -> None:
     db.init_db()
+
+
+@app.on_event("startup")
+async def _start_scheduler() -> None:
+    if os.environ.get("SCHEDULER_ENABLED") == "1":
+        asyncio.create_task(_scheduler_loop())
+
+
+async def _scheduler_loop() -> None:
+    while True:
+        await asyncio.sleep(5)
+        try:
+            _tick(time.time())
+        except Exception:  # pragma: no cover - never let the loop die
+            pass
+
+
+def _tick(now: float) -> list[str]:
+    """Fire every due schedule once; advance next_fire_at. Returns fired schedule ids (FR-10.2)."""
+    fired: list[str] = []
+    with db.session() as s:
+        due = s.scalars(db.select(db.Schedule)
+                        .where(db.Schedule.enabled == True, db.Schedule.next_fire_at <= now)).all()  # noqa: E712
+        for sch in due:
+            w = s.get(db.Workflow, sch.workflow_id)
+            if not w:
+                sch.enabled = False
+                continue
+            status, _ = _collect_run(Spec(**w.spec), {}, sch.tenant_id)
+            run = db.Run(tenant_id=sch.tenant_id, workflow_id=sch.workflow_id, status=status)
+            s.add(run)
+            s.flush()
+            sch.last_run_id = run.id
+            sch.next_fire_at = now + sch.interval_seconds
+            fired.append(sch.id)
+        s.commit()
+    return fired
 
 
 # ----------------------------- auth -----------------------------
@@ -337,6 +375,30 @@ def mcp_server(wid: str, req: dict, p: Principal = Depends(require_role("editor"
         return ok({"content": [{"type": "text", "text": json.dumps(final)}],
                    "isError": status == "failed"})
     return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"method not found: {method}"}}
+
+
+class ScheduleBody(BaseModel):
+    workflow_id: str
+    interval_seconds: int = 60
+
+
+@app.post("/api/v1/schedules")
+def create_schedule(body: ScheduleBody, p: Principal = Depends(require_role("editor"))) -> dict[str, Any]:
+    with db.session() as s:
+        _owned_workflow(s, body.workflow_id, p)          # tenant-scoped ownership check
+        sch = db.Schedule(tenant_id=p.tenant_id, workflow_id=body.workflow_id,
+                          interval_seconds=max(1, body.interval_seconds), next_fire_at=time.time())
+        s.add(sch)
+        s.commit()
+        return {"id": sch.id, "workflow_id": sch.workflow_id, "interval_seconds": sch.interval_seconds}
+
+
+@app.get("/api/v1/schedules")
+def list_schedules(p: Principal = Depends(get_principal)) -> list[dict[str, Any]]:
+    with db.session() as s:
+        rows = s.scalars(db.select(db.Schedule).where(db.Schedule.tenant_id == p.tenant_id)).all()
+        return [{"id": r.id, "workflow_id": r.workflow_id, "interval_seconds": r.interval_seconds,
+                 "enabled": r.enabled, "last_run_id": r.last_run_id} for r in rows]
 
 
 @app.get("/api/v1/runs")

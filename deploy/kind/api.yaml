@@ -104,6 +104,7 @@ spec:
             # RuntimePort → Agent Substrate: cli nodes execute as actor pods (FR-3.6, FR-4.3)
             - { name: SUBSTRATE_URL, value: "http://substrate.agent-studio-system.svc:9100" }
             - { name: CLI_DEFAULT_IMAGE, value: "agent-studio/control-plane:dev" }
+            - { name: SCHEDULER_ENABLED, value: "1" }     # background trigger worker (FR-10.2)
           ports: [{ containerPort: 8080 }]
           readinessProbe:
             httpGet: { path: /health, port: 8080 }
