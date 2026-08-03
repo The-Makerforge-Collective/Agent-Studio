@@ -350,6 +350,12 @@ async def run_deployed_workflow(wid: str, body: InvokeBody,
     return StreamingResponse(_run_stream(spec, body.seed, p.tenant_id), media_type="text/event-stream")
 
 
+@app.get("/api/v1/workflows/{wid}/widget", response_class=HTMLResponse)
+def workflow_widget(wid: str) -> str:
+    """Deploy surface (FR-10.1): a self-contained embeddable chat widget for a workflow."""
+    return WIDGET_HTML.replace("__WID__", wid)
+
+
 @app.post("/api/v1/workflows/{wid}/mcp")
 def mcp_server(wid: str, req: dict, p: Principal = Depends(require_role("editor"))) -> dict[str, Any]:
     """Deploy surface (FR-6.4/13.2): expose a workflow as an MCP tool over JSON-RPC 2.0."""
@@ -426,6 +432,37 @@ def run_trace(run_id: str, p: Principal = Depends(get_principal)) -> dict[str, A
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return INDEX_HTML
+
+
+WIDGET_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>Agent Studio widget</title>
+<style>
+ body{font-family:ui-sans-serif,system-ui,sans-serif;max-width:420px;margin:0;padding:12px;background:#faf8f5;color:#2b2724}
+ @media(prefers-color-scheme:dark){body{background:#1c1a18;color:#e8e2da}}
+ #log{min-height:140px;border:1px solid #e7dfd3;border-radius:10px;padding:10px;font-size:14px;white-space:pre-wrap}
+ input{width:100%;padding:8px;border:1px solid #e7dfd3;border-radius:8px;margin:4px 0;background:transparent;color:inherit}
+ button{background:#9a5b2b;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
+ .mut{color:#a89a86;font-size:12px}
+</style></head><body>
+<div class="mut">Agent Studio · workflow <code>__WID__</code></div>
+<input id="tok" placeholder="API token (Bearer)"/>
+<div id="log">Ask something…</div>
+<input id="msg" placeholder="Type a message and press Enter" onkeydown="if(event.key==='Enter')send()"/>
+<button onclick="send()">Send</button>
+<script>
+const WID="__WID__";
+async function send(){
+ const msg=document.getElementById('msg').value, tok=document.getElementById('tok').value;
+ document.getElementById('log').textContent="…";
+ const r=await fetch(`/api/v1/workflows/${WID}/run`,{method:'POST',
+   headers:{'content-type':'application/json','Authorization':'Bearer '+tok},
+   body:JSON.stringify({seed:{input:msg}})});
+ const rd=r.body.getReader(),dec=new TextDecoder();let buf="",last="";
+ for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value);
+   const lines=buf.split('\\n').filter(l=>l.startsWith('data:')&&l.includes('completed'));
+   if(lines.length)last=lines[lines.length-1].slice(5);}
+ document.getElementById('log').textContent=last||buf;
+}
+</script></body></html>"""
 
 
 INDEX_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>Agent Studio</title>

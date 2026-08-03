@@ -313,6 +313,14 @@ def test_deploy_surface_run_stored_workflow_by_id(client, auth):
     assert '"y": 42' in r.text and "done" in r.text
 
 
+def test_widget_surface_serves_embeddable_html(client, auth):
+    wf = client.post("/api/v1/workflows", headers=auth, json={
+        "name": "w", "spec": {"nodes": [{"id": "t", "type": "trigger_api"}], "edges": []}}).json()
+    r = client.get(f"/api/v1/workflows/{wf['id']}/widget")
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"]
+    assert wf["id"] in r.text and "/run" in r.text        # widget targets this workflow's run surface
+
+
 def test_mcp_server_surface(client, auth):
     wf = client.post("/api/v1/workflows", headers=auth, json={
         "name": "doubler",
