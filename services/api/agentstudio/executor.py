@@ -226,6 +226,20 @@ def _exec_tool_call(node, state) -> dict[str, Any]:
     return {"status": resp.status_code, "projected": value if proj else "(full body)"}
 
 
+def _exec_parallel(node, state, sub_runner) -> dict[str, Any]:
+    """Run config.branches (workflow ids) CONCURRENTLY, each on a copy of state (FR-3.2)."""
+    branches = node.config.get("branches")
+    if not isinstance(branches, list) or not branches:
+        raise ExecError("parallel_fanout requires config.branches (a non-empty list)")
+    if sub_runner is None:
+        return {"ran": False, "note": "no subworkflow runner bound (local mode)"}
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(8, len(branches))) as ex:
+        results = list(ex.map(lambda wid: sub_runner(wid, dict(state)), branches))
+    state[node.config.get("merge_as", "results")] = results
+    return {"ran": True, "branches": len(branches), "results": results}
+
+
 def _exec_end(node, state) -> dict[str, Any]:
     return {"output": dict(state)}
 
@@ -282,6 +296,8 @@ def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
                 result = _exec_retrieval(node, state, knowledge, tenant_id)
             elif node.type == "subworkflow":
                 result = _exec_subworkflow(node, state, sub_runner)
+            elif node.type == "parallel_fanout":
+                result = _exec_parallel(node, state, sub_runner)
             else:
                 result = EXECUTORS[node.type](node, state)
         except Exception as e:

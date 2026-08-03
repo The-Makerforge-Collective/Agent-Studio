@@ -177,6 +177,26 @@ def test_subworkflow_runs_child_and_merges_state():
     assert done["state"]["y"] == 12          # child's output merged into parent state
 
 
+def test_parallel_fanout_runs_branches_concurrently():
+    # two child workflows compute different things; a real sub_runner runs each via run_workflow
+    doubler = _spec([("t", "trigger_api", None), ("d", "transform", {"expr": "x * 2", "as": "r"}), ("e", "end", None)],
+                    [("t", "d"), ("d", "e")])
+    squarer = _spec([("t", "trigger_api", None), ("d", "transform", {"expr": "x * x", "as": "r"}), ("e", "end", None)],
+                    [("t", "d"), ("d", "e")])
+    kids = {"double": doubler, "square": squarer}
+
+    def sub_runner(wid, seed):
+        return [e for e in run_workflow(kids[wid], seed) if e["event"] == "done"][0]["state"]
+
+    parent = _spec([("t", "trigger_api", {"seed": {"x": 5}}),
+                    ("p", "parallel_fanout", {"branches": ["double", "square"], "merge_as": "outs"}),
+                    ("e", "end", None)],
+                   [("t", "p"), ("p", "e")])
+    done = [e for e in run_workflow(parent, sub_runner=sub_runner) if e["event"] == "done"][0]
+    rs = sorted(o["r"] for o in done["state"]["outs"])
+    assert rs == [10, 25]                     # both branches ran (5*2=10, 5*5=25)
+
+
 def test_subworkflow_honest_without_runner():
     parent = _spec([("t", "trigger_api", None), ("s", "subworkflow", {"workflow_id": "x"})],
                    [("t", "s")])
