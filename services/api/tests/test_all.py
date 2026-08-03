@@ -205,6 +205,26 @@ def test_subworkflow_honest_without_runner():
     assert msg["result"]["ran"] is False
 
 
+def test_guardrail_node_blocks_run_on_match():
+    spec = _spec([("t", "trigger_api", {"seed": {"msg": "my password is hunter2"}}),
+                  ("g", "guardrail", {"input_from": "msg", "blocked": [r"\bpassword\b"]}),
+                  ("e", "end", None)],
+                 [("t", "g"), ("g", "e")])
+    events = list(run_workflow(spec))
+    assert any(e["event"] == "error" for e in events)
+    assert not any(e.get("node") == "e" and e["event"] == "node_start" for e in events)
+
+
+def test_guardrail_node_redacts():
+    spec = _spec([("t", "trigger_api", {"seed": {"msg": "call me at 555-1234 now"}}),
+                  ("g", "guardrail", {"input_from": "msg", "on_match": "redact",
+                                      "blocked": [r"\d{3}-\d{4}"], "as": "clean"}),
+                  ("e", "end", None)],
+                 [("t", "g"), ("g", "e")])
+    done = [e for e in run_workflow(spec) if e["event"] == "done"][0]
+    assert "[REDACTED]" in done["state"]["clean"] and "555-1234" not in done["state"]["clean"]
+
+
 def test_classifier_picks_best_label():
     spec = _spec([("t", "trigger_api", {"seed": {"msg": "my invoice payment failed and I want a refund"}}),
                   ("c", "classifier", {"input_from": "msg", "as": "topic",

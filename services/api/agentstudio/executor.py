@@ -240,6 +240,25 @@ def _exec_parallel(node, state, sub_runner) -> dict[str, Any]:
     return {"ran": True, "branches": len(branches), "results": results}
 
 
+def _exec_guardrail(node, state) -> dict[str, Any]:
+    """Content guardrail (§9 Safety): block the run or redact when config.blocked regexes match."""
+    import re
+    src = node.config.get("input_from")
+    if not src:
+        raise ExecError("guardrail requires config.input_from")
+    patterns = node.config.get("blocked", [])
+    text = str(state.get(src, ""))
+    matched = [p for p in patterns if re.search(p, text, re.I)]
+    if not matched:
+        return {"matched": [], "action": "pass"}
+    if node.config.get("on_match", "fail") == "redact":
+        for p in patterns:
+            text = re.sub(p, "[REDACTED]", text, flags=re.I)
+        state[node.config.get("as", src)] = text
+        return {"matched": matched, "action": "redacted"}
+    raise ExecError(f"guardrail blocked: matched {matched}")
+
+
 def _exec_end(node, state) -> dict[str, Any]:
     return {"output": dict(state)}
 
@@ -250,6 +269,7 @@ EXECUTORS = {
     "quality_gate": _exec_quality_gate,
     "classifier": _exec_classifier,
     "tool_call": _exec_tool_call,
+    "guardrail": _exec_guardrail,
     "router": _exec_router,
     "agent": _exec_agent,
     "end": _exec_end,

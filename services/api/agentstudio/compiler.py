@@ -19,6 +19,7 @@ NODE_CATALOG = {
     "parallel_fanout": {"inputs": ["in"], "outputs": ["out"]},
     "classifier": {"inputs": ["in"], "outputs": ["out"]},
     "tool_call": {"inputs": ["in"], "outputs": ["out"]},
+    "guardrail": {"inputs": ["in"], "outputs": ["out"]},
     "router": {"inputs": ["in"], "outputs": ["a", "b"]},
     "end": {"inputs": ["in"], "outputs": []},
 }
@@ -36,6 +37,7 @@ NODE_DOCS = {
     "parallel_fanout": "Runs config.branches (workflow ids) concurrently, collecting results into config.merge_as.",
     "classifier": "Multi-way keyword classification into config.labels → config.as.",
     "tool_call": "Calls a REST endpoint (config.method/url/body); projects config.project into config.as.",
+    "guardrail": "Scans config.input_from for config.blocked regexes; fails the run or redacts on match.",
     "router": "Boolean branch on config.when; activates config.true or config.false target.",
     "end": "Terminal node; collects final state.",
 }
