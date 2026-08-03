@@ -16,6 +16,7 @@ NODE_CATALOG = {
     "memory_read": {"inputs": ["in"], "outputs": ["out"]},
     "retrieval": {"inputs": ["in"], "outputs": ["out"]},
     "subworkflow": {"inputs": ["in"], "outputs": ["out"]},
+    "classifier": {"inputs": ["in"], "outputs": ["out"]},
     "router": {"inputs": ["in"], "outputs": ["a", "b"]},
     "end": {"inputs": ["in"], "outputs": []},
 }

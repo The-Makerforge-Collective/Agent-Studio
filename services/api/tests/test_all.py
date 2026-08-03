@@ -184,6 +184,27 @@ def test_subworkflow_honest_without_runner():
     assert msg["result"]["ran"] is False
 
 
+def test_classifier_picks_best_label():
+    spec = _spec([("t", "trigger_api", {"seed": {"msg": "my invoice payment failed and I want a refund"}}),
+                  ("c", "classifier", {"input_from": "msg", "as": "topic",
+                                       "labels": {"billing": ["invoice", "payment", "refund"],
+                                                  "tech": ["error", "bug", "crash"]}}),
+                  ("e", "end", None)],
+                 [("t", "c"), ("c", "e")])
+    done = [e for e in run_workflow(spec) if e["event"] == "done"][0]
+    assert done["state"]["topic"] == "billing"
+
+
+def test_classifier_falls_back_to_default():
+    spec = _spec([("t", "trigger_api", {"seed": {"msg": "hello there"}}),
+                  ("c", "classifier", {"input_from": "msg", "as": "topic", "default": "other",
+                                       "labels": {"billing": ["invoice"], "tech": ["bug"]}}),
+                  ("e", "end", None)],
+                 [("t", "c"), ("c", "e")])
+    done = [e for e in run_workflow(spec) if e["event"] == "done"][0]
+    assert done["state"]["topic"] == "other"
+
+
 def test_run_agent_without_credentials_is_honest_not_mock():
     spec = _spec([("t", "trigger_api", None), ("a", "agent", {"prompt": "hi"})], [("t", "a")])
     events = list(run_workflow(spec))

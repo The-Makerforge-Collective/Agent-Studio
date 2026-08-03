@@ -43,6 +43,20 @@ def _exec_transform(node, state) -> dict[str, Any]:
     return {key: value}
 
 
+def _exec_classifier(node, state) -> dict[str, Any]:
+    """Multi-way content classification by keyword overlap (deterministic, no model)."""
+    text = state.get(node.config["input_from"]) if node.config.get("input_from") else node.config.get("input", "")
+    labels = node.config.get("labels")
+    if not isinstance(labels, dict) or not labels:
+        raise ExecError("classifier requires config.labels ({label: [keywords]})")
+    low = str(text).lower()
+    scores = {label: sum(1 for kw in kws if str(kw).lower() in low) for label, kws in labels.items()}
+    best = max(scores, key=lambda k: scores[k])
+    chosen = best if scores[best] > 0 else node.config.get("default", "unknown")
+    state[node.config.get("as", "label")] = chosen
+    return {"label": chosen, "scores": scores}
+
+
 def _exec_router(node, state) -> dict[str, Any]:
     when = node.config.get("when")
     if not when:
@@ -176,6 +190,7 @@ EXECUTORS = {
     "trigger_api": _exec_trigger,
     "transform": _exec_transform,
     "quality_gate": _exec_quality_gate,
+    "classifier": _exec_classifier,
     "router": _exec_router,
     "agent": _exec_agent,
     "end": _exec_end,
