@@ -231,6 +231,15 @@ def test_api_health(client):
     assert client.get("/health").json()["status"] == "ok"
 
 
+def test_self_docs_covers_every_node(client):
+    from agentstudio.compiler import NODE_CATALOG
+    docs = client.get("/api/v1/docs").json()
+    documented = {n["type"] for n in docs["nodes"]}
+    assert documented == set(NODE_CATALOG)                 # every node type is documented
+    assert all(n["description"] for n in docs["nodes"])    # and has a description
+    assert any("/mcp" in s for s in docs["deploy_surfaces"])
+
+
 def test_api_compile_rejects_cycle(client, auth):
     r = client.post("/api/v1/workflows/compile", headers=auth,
                     json={"nodes": [{"id": "a", "type": "agent"}, {"id": "b", "type": "agent"}],

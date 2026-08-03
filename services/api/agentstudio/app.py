@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from . import db, k8s, knowledge as knowledge_mod, memory, runtimeport
 from .auth import (Principal, create_token, get_principal, hash_password,
                    require_role, verify_password)
-from .compiler import NODE_CATALOG, Spec, compile_spec
+from .compiler import NODE_CATALOG, NODE_DOCS, Spec, compile_spec
 from .executor import run_workflow
 
 app = FastAPI(title="Agent Studio — Control Plane")
@@ -86,6 +86,20 @@ def health() -> dict[str, Any]:
 @app.get("/api/v1/nodes")
 def nodes(p: Principal = Depends(get_principal)) -> dict[str, Any]:
     return {"catalog": NODE_CATALOG}
+
+
+@app.get("/api/v1/docs")
+def self_docs() -> dict[str, Any]:
+    """Self-documentation (FR-11.1) generated from the live system — can't drift from reality."""
+    node_docs = [{"type": t, "description": NODE_DOCS.get(t, ""),
+                  "inputs": NODE_CATALOG[t]["inputs"], "outputs": NODE_CATALOG[t]["outputs"]}
+                 for t in NODE_CATALOG]
+    routes = sorted({f"{list(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}"
+                     for r in app.routes if getattr(r, "methods", None) and r.path.startswith("/api/")})
+    return {"service": "agent-studio", "nodes": node_docs,
+            "deploy_surfaces": ["POST /api/v1/workflows/{id}/run (HTTP)",
+                                "POST /api/v1/workflows/{id}/mcp (MCP server)"],
+            "endpoints": routes, "node_count": len(node_docs)}
 
 
 # ----------------------------- workflows (tenant-scoped) -----------------------------

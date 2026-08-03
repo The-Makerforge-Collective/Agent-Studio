@@ -21,6 +21,21 @@ NODE_CATALOG = {
     "end": {"inputs": ["in"], "outputs": []},
 }
 
+NODE_DOCS = {
+    "trigger_api": "Entry node; seeds initial state from config.seed.",
+    "agent": "Calls a model through the gateway (config.prompt); no provider keys in the app.",
+    "transform": "Computes a value via the safe expression evaluator (config.expr → config.as).",
+    "cli": "Runs config.command as a Substrate actor pod in the tenant's namespace.",
+    "quality_gate": "Hard gate: every config.checks predicate must pass or the run fails.",
+    "memory_write": "Persists state[config.from] to tenant memory under config.key.",
+    "memory_read": "Recalls tenant memory config.key into state[config.as].",
+    "retrieval": "Keyword search over tenant knowledge (config.query/query_from → config.as).",
+    "subworkflow": "Runs another stored workflow (config.workflow_id), merging its output state.",
+    "classifier": "Multi-way keyword classification into config.labels → config.as.",
+    "router": "Boolean branch on config.when; activates config.true or config.false target.",
+    "end": "Terminal node; collects final state.",
+}
+
 
 class Node(BaseModel):
     id: str
