@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -187,15 +188,60 @@ async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
                    "status": recon.get("status")})
 
     yield sse({"event": "run", "run_id": run_id, "status": "accepted"})
+    starts: dict[str, tuple[float, str]] = {}
+    seq = 0
+    final_status = "completed"
     for ev in run_workflow(spec, seed, runtime=runtime, namespace=namespace):
+        et = ev.get("event")
+        if et == "node_start":
+            starts[ev["node"]] = (time.time(), ev.get("type", ""))
+        elif et == "node_end":
+            nid = ev["node"]
+            t0, ntype = starts.get(nid, (time.time(), ""))
+            t1 = time.time()
+            seq += 1
+            with db.session() as s:                       # persist the span (FR-9.1)
+                s.add(db.RunNode(run_id=run_id, tenant_id=tenant_id, seq=seq, node_id=nid,
+                                 node_type=ntype, status=ev.get("status", "ok"),
+                                 t_start=t0, t_end=t1, duration_ms=int((t1 - t0) * 1000)))
+                s.commit()
+            if ev.get("status") == "error":
+                final_status = "failed"
         yield sse(ev)
         await asyncio.sleep(0)
+    with db.session() as s:
+        r = s.get(db.Run, run_id)
+        if r:
+            r.status = final_status
+            s.commit()
 
 
 @app.post("/api/v1/runs")
 async def run_endpoint(req: RunRequest, p: Principal = Depends(require_role("editor"))) -> StreamingResponse:
     spec = Spec(nodes=req.nodes, edges=req.edges)
     return StreamingResponse(_run_stream(spec, req.seed, p.tenant_id), media_type="text/event-stream")
+
+
+@app.get("/api/v1/runs")
+def list_runs(p: Principal = Depends(get_principal)) -> list[dict[str, Any]]:
+    with db.session() as s:
+        rows = s.scalars(db.select(db.Run).where(db.Run.tenant_id == p.tenant_id)).all()
+        return [{"id": r.id, "status": r.status, "started_at": r.started_at} for r in rows]
+
+
+@app.get("/api/v1/runs/{run_id}/trace")
+def run_trace(run_id: str, p: Principal = Depends(get_principal)) -> dict[str, Any]:
+    """The run's span waterfall — per-node timing (FR-9.1), tenant-scoped."""
+    with db.session() as s:
+        r = s.get(db.Run, run_id)
+        if not r or r.tenant_id != p.tenant_id:
+            raise HTTPException(404, "run not found")
+        spans = s.scalars(db.select(db.RunNode).where(db.RunNode.run_id == run_id)
+                          .order_by(db.RunNode.seq)).all()
+        total = sum(sp.duration_ms for sp in spans)
+        return {"run_id": r.id, "status": r.status, "total_ms": total,
+                "spans": [{"seq": sp.seq, "node": sp.node_id, "type": sp.node_type,
+                           "status": sp.status, "duration_ms": sp.duration_ms} for sp in spans]}
 
 
 @app.get("/", response_class=HTMLResponse)

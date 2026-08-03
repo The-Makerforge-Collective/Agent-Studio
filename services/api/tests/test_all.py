@@ -1,4 +1,5 @@
 """Real tests — no mocks. Exercises the evaluator, execution engine, compiler, and HTTP API."""
+import json
 import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -148,3 +149,27 @@ def test_api_create_and_run(client, auth):
                   {"id": "e", "type": "end"}],
         "edges": [{"source": "t", "target": "d"}, {"source": "d", "target": "e"}]})
     assert '"y": 7' in r.text and "done" in r.text
+
+
+def test_run_trace_span_waterfall(client, auth):
+    r = client.post("/api/v1/runs", headers=auth, json={
+        "nodes": [{"id": "t", "type": "trigger_api"}, {"id": "e", "type": "end"}],
+        "edges": [{"source": "t", "target": "e"}]})
+    run_id = [json.loads(line.split("data:", 1)[1]) for line in r.text.splitlines()
+              if line.startswith("data:") and '"run_id"' in line][0]["run_id"]
+    trace = client.get(f"/api/v1/runs/{run_id}/trace", headers=auth).json()
+    assert trace["status"] == "completed"
+    assert [s["node"] for s in trace["spans"]] == ["t", "e"]          # ordered spans
+    assert all("duration_ms" in s for s in trace["spans"])            # per-node timing recorded
+
+
+def test_run_trace_is_tenant_scoped(client, auth):
+    # another tenant cannot read this tenant's run trace
+    from agentstudio import db
+    from agentstudio.auth import create_token
+    other = {"Authorization": f"Bearer {create_token('u2', 'other-tenant', 'admin', 'x@y.z')}"}
+    r = client.post("/api/v1/runs", headers=auth, json={
+        "nodes": [{"id": "t", "type": "trigger_api"}], "edges": []})
+    run_id = [json.loads(line.split("data:", 1)[1]) for line in r.text.splitlines()
+              if line.startswith("data:") and '"run_id"' in line][0]["run_id"]
+    assert client.get(f"/api/v1/runs/{run_id}/trace", headers=other).status_code == 404

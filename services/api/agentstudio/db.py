@@ -77,8 +77,23 @@ class Run(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_ulid)
     tenant_id: Mapped[str] = mapped_column(String, index=True, default="")
     workflow_id: Mapped[str] = mapped_column(String, default="")
-    status: Mapped[str] = mapped_column(String, default="completed")
+    status: Mapped[str] = mapped_column(String, default="running")
     started_at: Mapped[float] = mapped_column(default=lambda: time.time())
+
+
+class RunNode(Base):
+    """Per-node span for the run's span waterfall (FR-9.1)."""
+    __tablename__ = "run_nodes"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_ulid)
+    run_id: Mapped[str] = mapped_column(String, index=True)
+    tenant_id: Mapped[str] = mapped_column(String, index=True, default="")
+    seq: Mapped[int] = mapped_column(default=0)
+    node_id: Mapped[str] = mapped_column(String)
+    node_type: Mapped[str] = mapped_column(String, default="")
+    status: Mapped[str] = mapped_column(String, default="ok")
+    t_start: Mapped[float] = mapped_column(default=0.0)
+    t_end: Mapped[float] = mapped_column(default=0.0)
+    duration_ms: Mapped[int] = mapped_column(default=0)
 
 
 def init_db(retries: int = 30) -> None:
@@ -117,5 +132,5 @@ def session() -> Session:
     return Session(_engine, future=True)
 
 
-__all__ = ["Tenant", "User", "Membership", "Workflow", "Deployment", "Run",
+__all__ = ["Tenant", "User", "Membership", "Workflow", "Deployment", "Run", "RunNode",
            "init_db", "session", "select", "DATABASE_URL"]
