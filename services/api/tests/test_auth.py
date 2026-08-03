@@ -17,8 +17,6 @@ def client():
     from agentstudio.app import app
     with TestClient(app) as c:
         yield c
-    if os.path.exists("auth_test.db"):
-        os.remove("auth_test.db")
 
 
 def _login(client, email, pw):

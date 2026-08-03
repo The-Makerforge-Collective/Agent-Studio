@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import db, k8s, memory, runtimeport
+from . import db, k8s, knowledge as knowledge_mod, memory, runtimeport
 from .auth import (Principal, create_token, get_principal, hash_password,
                    require_role, verify_password)
 from .compiler import NODE_CATALOG, Spec, compile_spec
@@ -159,6 +159,23 @@ def namespaces(p: Principal = Depends(get_principal)) -> dict[str, Any]:
     return {"agent_namespaces": k8s.list_agent_namespaces()}
 
 
+# ----------------------------- knowledge (RAG, tenant-scoped) -----------------------------
+class IngestBody(BaseModel):
+    source: str = "upload"
+    text: str
+
+
+@app.post("/api/v1/knowledge/sources")
+def ingest_knowledge(body: IngestBody, p: Principal = Depends(require_role("editor"))) -> dict[str, Any]:
+    n = knowledge_mod.PgKnowledge().ingest(p.tenant_id, body.source, body.text)
+    return {"ingested_chunks": n, "source": body.source}
+
+
+@app.get("/api/v1/knowledge/query")
+def query_knowledge(q: str, k: int = 3, p: Principal = Depends(get_principal)) -> dict[str, Any]:
+    return {"query": q, "results": knowledge_mod.PgKnowledge().search(p.tenant_id, q, k)}
+
+
 # ----------------------------- runs -----------------------------
 class RunRequest(Spec):
     seed: dict[str, Any] = {}
@@ -189,11 +206,12 @@ async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
 
     yield sse({"event": "run", "run_id": run_id, "status": "accepted"})
     mem = memory.PgMemory()
+    know = knowledge_mod.PgKnowledge()
     starts: dict[str, tuple[float, str]] = {}
     seq = 0
     final_status = "completed"
     for ev in run_workflow(spec, seed, runtime=runtime, namespace=namespace,
-                           memory=mem, tenant_id=tenant_id):
+                           memory=mem, tenant_id=tenant_id, knowledge=know):
         et = ev.get("event")
         if et == "node_start":
             starts[ev["node"]] = (time.time(), ev.get("type", ""))

@@ -81,6 +81,16 @@ class Run(Base):
     started_at: Mapped[float] = mapped_column(default=lambda: time.time())
 
 
+class KnowledgeChunk(Base):
+    """RAG store (FR-7.1) — tenant-scoped text chunks, keyword-searchable (no embeddings needed)."""
+    __tablename__ = "knowledge_chunks"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_ulid)
+    tenant_id: Mapped[str] = mapped_column(String, index=True)
+    source: Mapped[str] = mapped_column(String, default="")
+    text: Mapped[str] = mapped_column(String)
+    created_at: Mapped[float] = mapped_column(default=lambda: time.time())
+
+
 class Memory(Base):
     """Agent memory substrate (FR-7.5) — tenant-scoped key/value, latest-wins on read."""
     __tablename__ = "memories"
@@ -143,4 +153,4 @@ def session() -> Session:
 
 
 __all__ = ["Tenant", "User", "Membership", "Workflow", "Deployment", "Run", "RunNode", "Memory",
-           "init_db", "session", "select", "DATABASE_URL"]
+           "KnowledgeChunk", "init_db", "session", "select", "DATABASE_URL"]

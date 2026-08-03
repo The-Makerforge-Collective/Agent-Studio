@@ -140,6 +140,18 @@ def _exec_memory_read(node, state, memory, tenant) -> dict[str, Any]:
     return {"read": True, "key": key, "value": value}
 
 
+def _exec_retrieval(node, state, knowledge, tenant) -> dict[str, Any]:
+    query = state.get(node.config["query_from"]) if node.config.get("query_from") else node.config.get("query")
+    if not query:
+        raise ExecError("retrieval requires config.query or config.query_from")
+    if knowledge is None or not tenant:
+        return {"retrieved": False, "note": "no knowledge store bound (local mode)"}
+    k = int(node.config.get("k", 3))
+    hits = knowledge.search(tenant, str(query), k)
+    state[node.config.get("as", "retrieved")] = [h["text"] for h in hits]
+    return {"retrieved": True, "hits": len(hits), "results": hits}
+
+
 def _exec_end(node, state) -> dict[str, Any]:
     return {"output": dict(state)}
 
@@ -156,7 +168,8 @@ EXECUTORS = {
 
 def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
                  runtime=None, namespace: str | None = None,
-                 memory=None, tenant_id: str | None = None) -> Iterator[dict[str, Any]]:
+                 memory=None, tenant_id: str | None = None,
+                 knowledge=None) -> Iterator[dict[str, Any]]:
     """Execute the compiled workflow, yielding event dicts. Real state threading + routing.
     `cli` nodes execute as Substrate actor pods in `namespace` when a runtime is bound;
     `memory_*` nodes use the bound memory store, scoped to `tenant_id`."""
@@ -189,6 +202,8 @@ def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
                 result = _exec_memory_write(node, state, memory, tenant_id)
             elif node.type == "memory_read":
                 result = _exec_memory_read(node, state, memory, tenant_id)
+            elif node.type == "retrieval":
+                result = _exec_retrieval(node, state, knowledge, tenant_id)
             else:
                 result = EXECUTORS[node.type](node, state)
         except Exception as e:
