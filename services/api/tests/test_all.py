@@ -245,6 +245,26 @@ def test_deploy_surface_run_stored_workflow_by_id(client, auth):
     assert '"y": 42' in r.text and "done" in r.text
 
 
+def test_mcp_server_surface(client, auth):
+    wf = client.post("/api/v1/workflows", headers=auth, json={
+        "name": "doubler",
+        "spec": {"nodes": [{"id": "t", "type": "trigger_api"},
+                           {"id": "d", "type": "transform", "config": {"expr": "x * 2", "as": "y"}},
+                           {"id": "e", "type": "end"}],
+                 "edges": [{"source": "t", "target": "d"}, {"source": "d", "target": "e"}]}}).json()
+    mcp = f"/api/v1/workflows/{wf['id']}/mcp"
+    # initialize
+    init = client.post(mcp, headers=auth, json={"jsonrpc": "2.0", "id": 1, "method": "initialize"}).json()
+    assert init["result"]["protocolVersion"] == "2024-11-05"
+    # tools/list exposes the workflow as a tool
+    tl = client.post(mcp, headers=auth, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}).json()
+    assert tl["result"]["tools"][0]["name"] == "doubler"
+    # tools/call runs it
+    call = client.post(mcp, headers=auth, json={"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                                                "params": {"name": "doubler", "arguments": {"seed": {"x": 20}}}}).json()
+    assert '"y": 40' in call["result"]["content"][0]["text"]
+
+
 def test_run_trace_span_waterfall(client, auth):
     r = client.post("/api/v1/runs", headers=auth, json={
         "nodes": [{"id": "t", "type": "trigger_api"}, {"id": "e", "type": "end"}],

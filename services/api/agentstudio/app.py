@@ -185,6 +185,46 @@ def _has_cli(spec: Spec) -> bool:
     return any(n.type == "cli" for n in spec.nodes)
 
 
+def _make_sub_runner(tenant_id, mem, know, runtime, namespace, depth=0):
+    def run(wid: str, child_seed: dict[str, Any]) -> dict[str, Any]:
+        if depth >= 5:
+            raise RuntimeError("subworkflow recursion depth limit (5) exceeded")
+        with db.session() as s:
+            w = s.get(db.Workflow, wid)
+            if not w or w.tenant_id != tenant_id:
+                raise RuntimeError(f"subworkflow {wid} not found")
+            child_spec = Spec(**w.spec)
+        final: dict[str, Any] = {}
+        for cev in run_workflow(child_spec, child_seed, runtime=runtime, namespace=namespace,
+                                memory=mem, tenant_id=tenant_id, knowledge=know,
+                                sub_runner=_make_sub_runner(tenant_id, mem, know, runtime, namespace, depth + 1)):
+            if cev.get("event") == "done":
+                final = cev.get("state", {})
+            elif cev.get("event") == "error":
+                raise RuntimeError(f"subworkflow {wid} failed: {cev.get('errors')}")
+        return final
+    return run
+
+
+def _collect_run(spec: Spec, seed: dict[str, Any], tenant_id: str) -> tuple[str, dict[str, Any]]:
+    """Run a workflow to completion (non-streaming) and return (status, final_state)."""
+    runtime = runtimeport.bind()
+    namespace = None
+    if _has_cli(spec) and runtime is not None:
+        namespace = k8s.reconcile_agent_namespace(tenant_id).get("namespace")
+    mem, know = memory.PgMemory(), knowledge_mod.PgKnowledge()
+    final: dict[str, Any] = {}
+    status = "completed"
+    for ev in run_workflow(spec, seed, runtime=runtime, namespace=namespace, memory=mem,
+                           tenant_id=tenant_id, knowledge=know,
+                           sub_runner=_make_sub_runner(tenant_id, mem, know, runtime, namespace, 0)):
+        if ev.get("event") == "done":
+            final = ev.get("state", {})
+        elif ev.get("event") == "error":
+            status = "failed"
+    return status, final
+
+
 async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
     def sse(ev: dict) -> str:
         return f"event: {ev['event']}\ndata: {json.dumps({k: v for k, v in ev.items() if k != 'event'})}\n\n"
@@ -207,33 +247,13 @@ async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
     yield sse({"event": "run", "run_id": run_id, "status": "accepted"})
     mem = memory.PgMemory()
     know = knowledge_mod.PgKnowledge()
-
-    def make_sub_runner(depth: int):
-        def run(wid: str, child_seed: dict[str, Any]) -> dict[str, Any]:
-            if depth >= 5:
-                raise RuntimeError("subworkflow recursion depth limit (5) exceeded")
-            with db.session() as s:
-                w = s.get(db.Workflow, wid)
-                if not w or w.tenant_id != tenant_id:      # tenant-scoped: no cross-tenant calls
-                    raise RuntimeError(f"subworkflow {wid} not found")
-                child_spec = Spec(**w.spec)
-            final: dict[str, Any] = {}
-            for cev in run_workflow(child_spec, child_seed, runtime=runtime, namespace=namespace,
-                                    memory=mem, tenant_id=tenant_id, knowledge=know,
-                                    sub_runner=make_sub_runner(depth + 1)):
-                if cev.get("event") == "done":
-                    final = cev.get("state", {})
-                elif cev.get("event") == "error":
-                    raise RuntimeError(f"subworkflow {wid} failed: {cev.get('errors')}")
-            return final
-        return run
-
+    sub_runner = _make_sub_runner(tenant_id, mem, know, runtime, namespace, 0)
     starts: dict[str, tuple[float, str]] = {}
     seq = 0
     final_status = "completed"
     for ev in run_workflow(spec, seed, runtime=runtime, namespace=namespace,
                            memory=mem, tenant_id=tenant_id, knowledge=know,
-                           sub_runner=make_sub_runner(0)):
+                           sub_runner=sub_runner):
         et = ev.get("event")
         if et == "node_start":
             starts[ev["node"]] = (time.time(), ev.get("type", ""))
@@ -276,6 +296,33 @@ async def run_deployed_workflow(wid: str, body: InvokeBody,
         w = _owned_workflow(s, wid, p)
         spec = Spec(**w.spec)
     return StreamingResponse(_run_stream(spec, body.seed, p.tenant_id), media_type="text/event-stream")
+
+
+@app.post("/api/v1/workflows/{wid}/mcp")
+def mcp_server(wid: str, req: dict, p: Principal = Depends(require_role("editor"))) -> dict[str, Any]:
+    """Deploy surface (FR-6.4/13.2): expose a workflow as an MCP tool over JSON-RPC 2.0."""
+    with db.session() as s:
+        w = _owned_workflow(s, wid, p)
+        name, spec = w.name, Spec(**w.spec)
+    rid, method, params = req.get("id"), req.get("method"), req.get("params") or {}
+
+    def ok(result):
+        return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+    if method == "initialize":
+        return ok({"protocolVersion": "2024-11-05", "capabilities": {"tools": {}},
+                   "serverInfo": {"name": f"agent-studio:{name}", "version": "0.1"}})
+    if method == "tools/list":
+        return ok({"tools": [{"name": name, "description": f"Run the '{name}' workflow",
+                              "inputSchema": {"type": "object",
+                                              "properties": {"seed": {"type": "object"}}}}]})
+    if method == "tools/call":
+        args = params.get("arguments") or {}
+        seed = args.get("seed", args)
+        status, final = _collect_run(spec, seed, p.tenant_id)
+        return ok({"content": [{"type": "text", "text": json.dumps(final)}],
+                   "isError": status == "failed"})
+    return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"method not found: {method}"}}
 
 
 @app.get("/api/v1/runs")
