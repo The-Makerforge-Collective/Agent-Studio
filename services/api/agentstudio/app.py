@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -23,6 +24,23 @@ from .compiler import NODE_CATALOG, NODE_DOCS, Spec, compile_spec
 from .executor import run_workflow
 
 app = FastAPI(title="Agent Studio — Control Plane")
+
+_default_origins = [
+    "http://localhost:3000",
+    "http://localhost:30300",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:30300",
+]
+_extra = os.environ.get("CORS_ORIGINS", "")
+_cors_origins = _default_origins + [o.strip() for o in _extra.split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
