@@ -78,6 +78,21 @@ def map_oidc_claims(claims: dict) -> Principal:
 _jwk_client = None
 
 
+def _resolve_tenant_id(name_or_id: str) -> str:
+    """If the tenant claim is a name (e.g. 'acme'), resolve it to the DB id."""
+    if not name_or_id or len(name_or_id) > 30:
+        return name_or_id
+    from . import db
+    with db.session() as s:
+        t = s.scalar(db.select(db.Tenant).where(db.Tenant.name == name_or_id))
+        if t:
+            return t.id
+        t = s.get(db.Tenant, name_or_id)
+        if t:
+            return t.id
+    return name_or_id
+
+
 def _verify_oidc(token: str) -> Principal:
     global _jwk_client
     if _jwk_client is None:
@@ -87,7 +102,9 @@ def _verify_oidc(token: str) -> Principal:
     claims = jwt.decode(token, key, algorithms=["RS256"],
                         issuer=OIDC_ISSUER or None,
                         options={"verify_aud": False, "verify_iss": bool(OIDC_ISSUER)})
-    return map_oidc_claims(claims)
+    p = map_oidc_claims(claims)
+    p.tenant_id = _resolve_tenant_id(p.tenant_id)
+    return p
 
 
 def _verify_local(token: str) -> Principal:

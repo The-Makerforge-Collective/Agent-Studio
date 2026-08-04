@@ -218,14 +218,24 @@ def create_workflow(body: CreateWorkflow, p: Principal = Depends(require_role("e
 @app.get("/api/v1/workflows")
 def list_workflows(p: Principal = Depends(get_principal)) -> list[dict[str, Any]]:
     with db.session() as s:
-        rows = s.scalars(db.select(db.Workflow).where(db.Workflow.tenant_id == p.tenant_id)).all()
+        rows = s.scalars(db.select(db.Workflow).where(
+            db.or_(db.Workflow.tenant_id == p.tenant_id, db.Workflow.public == True)
+        )).all()
         return [{"id": w.id, "name": w.name, "spec": w.spec,
-                 "created_at": w.created_at, "created_by": w.created_by} for w in rows]
+                 "created_at": w.created_at, "created_by": w.created_by,
+                 "public": w.public} for w in rows]
 
 
 def _owned_workflow(s, wid: str, p: Principal) -> "db.Workflow":
     w = s.get(db.Workflow, wid)
-    if not w or w.tenant_id != p.tenant_id:      # cross-tenant access is a 404, not a 403 (no leak)
+    if not w or w.tenant_id != p.tenant_id:
+        raise HTTPException(404, "workflow not found")
+    return w
+
+
+def _accessible_workflow(s, wid: str, p: Principal) -> "db.Workflow":
+    w = s.get(db.Workflow, wid)
+    if not w or (w.tenant_id != p.tenant_id and not w.public):
         raise HTTPException(404, "workflow not found")
     return w
 
@@ -233,14 +243,16 @@ def _owned_workflow(s, wid: str, p: Principal) -> "db.Workflow":
 @app.get("/api/v1/workflows/{wid}")
 def get_workflow(wid: str, p: Principal = Depends(get_principal)) -> dict[str, Any]:
     with db.session() as s:
-        w = _owned_workflow(s, wid, p)
+        w = _accessible_workflow(s, wid, p)
         return {"id": w.id, "name": w.name, "spec": w.spec, "tenant_id": w.tenant_id,
-                "created_at": w.created_at, "created_by": w.created_by}
+                "created_at": w.created_at, "created_by": w.created_by,
+                "public": w.public}
 
 
 class UpdateWorkflow(BaseModel):
     name: str | None = None
     spec: Spec | None = None
+    public: bool | None = None
 
 
 @app.put("/api/v1/workflows/{wid}")
@@ -252,8 +264,10 @@ def update_workflow(wid: str, body: UpdateWorkflow,
             w.name = body.name
         if body.spec is not None:
             w.spec = body.spec.model_dump()
+        if body.public is not None:
+            w.public = body.public
         s.commit()
-        return {"id": w.id, "name": w.name, "spec": w.spec}
+        return {"id": w.id, "name": w.name, "spec": w.spec, "public": w.public}
 
 
 @app.delete("/api/v1/workflows/{wid}")
@@ -269,7 +283,7 @@ def delete_workflow(wid: str, p: Principal = Depends(require_role("editor"))) ->
 def workflow_code(wid: str, p: Principal = Depends(get_principal)) -> PlainTextResponse:
     """Generate LangGraph Python code for a workflow."""
     with db.session() as s:
-        w = _owned_workflow(s, wid, p)
+        w = _accessible_workflow(s, wid, p)
         spec = Spec(**w.spec)
         code = _generate_langgraph_code(w.name, spec)
         return PlainTextResponse(code, media_type="text/x-python",
@@ -577,7 +591,7 @@ async def run_deployed_workflow(wid: str, body: InvokeBody,
                                 p: Principal = Depends(require_role("editor"))) -> StreamingResponse:
     """Deploy surface (FR-10.1): invoke a stored workflow by id — the persisted spec is executed."""
     with db.session() as s:
-        w = _owned_workflow(s, wid, p)
+        w = _accessible_workflow(s, wid, p)
         spec = Spec(**w.spec)
     return StreamingResponse(_run_stream(spec, body.seed, p.tenant_id), media_type="text/event-stream")
 
@@ -592,7 +606,7 @@ def workflow_widget(wid: str) -> str:
 def mcp_server(wid: str, req: dict, p: Principal = Depends(require_role("editor"))) -> dict[str, Any]:
     """Deploy surface (FR-6.4/13.2): expose a workflow as an MCP tool over JSON-RPC 2.0."""
     with db.session() as s:
-        w = _owned_workflow(s, wid, p)
+        w = _accessible_workflow(s, wid, p)
         name, spec = w.name, Spec(**w.spec)
     rid, method, params = req.get("id"), req.get("method"), req.get("params") or {}
 
