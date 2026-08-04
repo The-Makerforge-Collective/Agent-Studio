@@ -101,7 +101,7 @@ spec:
       serviceAccountName: control-plane
       containers:
         - name: api
-          image: agent-studio/control-plane:dev
+          image: localhost/agent-studio/control-plane:dev
           imagePullPolicy: IfNotPresent
           env:
             - name: DATABASE_URL
