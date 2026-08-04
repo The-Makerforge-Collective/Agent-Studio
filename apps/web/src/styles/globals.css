@@ -29,6 +29,23 @@ body {
   color: var(--color-text);
 }
 
+.login-bg {
+  background-color: var(--color-surface);
+  background-image:
+    radial-gradient(circle at 20% 50%, rgba(154, 91, 43, 0.06) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(154, 91, 43, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 60% 80%, rgba(154, 91, 43, 0.05) 0%, transparent 45%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .login-bg {
+    background-image:
+      radial-gradient(circle at 20% 50%, rgba(196, 121, 58, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(196, 121, 58, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 60% 80%, rgba(196, 121, 58, 0.06) 0%, transparent 45%);
+  }
+}
+
 .react-flow__node {
   font-family: inherit;
 }
