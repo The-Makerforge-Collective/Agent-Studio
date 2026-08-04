@@ -13,7 +13,7 @@ import time
 import uuid
 from typing import Any
 
-from sqlalchemy import JSON, String, create_engine, select
+from sqlalchemy import JSON, Boolean, String, create_engine, or_, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from .auth import hash_password
@@ -59,6 +59,7 @@ class Workflow(Base):
     spec: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_by: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[float] = mapped_column(default=lambda: time.time())
+    public: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Deployment(Base):
@@ -125,6 +126,34 @@ class Schedule(Base):
     last_run_id: Mapped[str] = mapped_column(String, default="")
 
 
+class Skill(Base):
+    """Reusable agent skill in agentskills.io format."""
+    __tablename__ = "skills"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_ulid)
+    tenant_id: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(String, default="")
+    spec: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_by: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[float] = mapped_column(default=lambda: time.time())
+
+
+class McpServer(Base):
+    """Registered remote MCP server providing tools to agent nodes."""
+    __tablename__ = "mcp_servers"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_ulid)
+    tenant_id: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    url: Mapped[str] = mapped_column(String)
+    transport: Mapped[str] = mapped_column(String, default="streamable-http")
+    auth_header: Mapped[str] = mapped_column(String, default="")
+    headers: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    tools: Mapped[dict[str, Any]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String, default="pending")
+    created_by: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[float] = mapped_column(default=lambda: time.time())
+
+
 class RunNode(Base):
     """Per-node span for the run's span waterfall (FR-9.1)."""
     __tablename__ = "run_nodes"
@@ -169,7 +198,90 @@ def _bootstrap() -> None:
         s.add_all([tenant, user])
         s.flush()
         s.add(Membership(user_id=user.id, tenant_id=tenant.id, role="admin"))
+        _seed_demo_workflows(s, tenant.id)
         s.commit()
+
+
+_DEMO_WORKFLOWS = [
+    ("Hello World", {
+        "nodes": [
+            {"id": "trigger", "type": "trigger_api", "config": {"seed": {"name": "World"}}},
+            {"id": "greet", "type": "transform", "config": {"expr": "\"Hello, \" + name + \"!\"", "as": "greeting"}},
+            {"id": "done", "type": "end", "config": {}},
+        ],
+        "edges": [{"source": "trigger", "target": "greet"}, {"source": "greet", "target": "done"}],
+    }),
+    ("Priority Router", {
+        "nodes": [
+            {"id": "trigger", "type": "trigger_api", "config": {"seed": {"priority": 8}}},
+            {"id": "check", "type": "router", "config": {"when": "priority > 5", "true": "urgent", "false": "normal"}},
+            {"id": "urgent", "type": "transform", "config": {"expr": "\"URGENT: priority=\" + str(priority)", "as": "result"}},
+            {"id": "normal", "type": "transform", "config": {"expr": "\"normal: priority=\" + str(priority)", "as": "result"}},
+        ],
+        "edges": [
+            {"source": "trigger", "target": "check"},
+            {"source": "check", "target": "urgent"},
+            {"source": "check", "target": "normal"},
+        ],
+    }),
+    ("Math Pipeline", {
+        "nodes": [
+            {"id": "trigger", "type": "trigger_api", "config": {"seed": {"x": 10}}},
+            {"id": "double", "type": "transform", "config": {"expr": "x * 2", "as": "doubled"}},
+            {"id": "add", "type": "transform", "config": {"expr": "doubled + 100", "as": "result"}},
+            {"id": "done", "type": "end", "config": {}},
+        ],
+        "edges": [
+            {"source": "trigger", "target": "double"},
+            {"source": "double", "target": "add"},
+            {"source": "add", "target": "done"},
+        ],
+    }),
+    ("Quality Gate", {
+        "nodes": [
+            {"id": "trigger", "type": "trigger_api", "config": {"seed": {"score": 85}}},
+            {"id": "scale", "type": "transform", "config": {"expr": "score / 10", "as": "scaled"}},
+            {"id": "gate", "type": "quality_gate", "config": {"checks": [{"expr": "scaled > 5", "name": "min-threshold"}]}},
+        ],
+        "edges": [{"source": "trigger", "target": "scale"}, {"source": "scale", "target": "gate"}],
+    }),
+    ("Sentiment Router", {
+        "nodes": [
+            {"id": "trigger", "type": "trigger_api", "config": {"seed": {"sentiment": "positive", "value": 42}}},
+            {"id": "check", "type": "router", "config": {"when": "sentiment == \"positive\"", "true": "happy", "false": "sad"}},
+            {"id": "happy", "type": "transform", "config": {"expr": "\"Great news! Value is \" + str(value)", "as": "message"}},
+            {"id": "sad", "type": "transform", "config": {"expr": "\"Oh no. Value is \" + str(value)", "as": "message"}},
+        ],
+        "edges": [
+            {"source": "trigger", "target": "check"},
+            {"source": "check", "target": "happy"},
+            {"source": "check", "target": "sad"},
+        ],
+    }),
+    ("Data Pipeline", {
+        "nodes": [
+            {"id": "trigger", "type": "trigger_api", "config": {"seed": {"items": 5, "price": 20}}},
+            {"id": "total", "type": "transform", "config": {"expr": "items * price", "as": "subtotal"}},
+            {"id": "tax", "type": "transform", "config": {"expr": "subtotal * 1.08", "as": "total_with_tax"}},
+            {"id": "check", "type": "router", "config": {"when": "total_with_tax > 100", "true": "big", "false": "small"}},
+            {"id": "big", "type": "end", "config": {}},
+            {"id": "small", "type": "end", "config": {}},
+        ],
+        "edges": [
+            {"source": "trigger", "target": "total"},
+            {"source": "total", "target": "tax"},
+            {"source": "tax", "target": "check"},
+            {"source": "check", "target": "big"},
+            {"source": "check", "target": "small"},
+        ],
+    }),
+]
+
+
+def _seed_demo_workflows(s: Session, tenant_id: str) -> None:
+    for name, spec in _DEMO_WORKFLOWS:
+        s.add(Workflow(tenant_id=tenant_id, name=name, spec=spec,
+                       created_by="system", public=True))
 
 
 def session() -> Session:
@@ -177,4 +289,5 @@ def session() -> Session:
 
 
 __all__ = ["Tenant", "User", "Membership", "Workflow", "Deployment", "Run", "RunNode", "Memory",
-           "KnowledgeChunk", "Schedule", "ApprovalRequest", "init_db", "session", "select", "DATABASE_URL"]
+           "KnowledgeChunk", "Schedule", "ApprovalRequest", "Skill", "McpServer",
+           "init_db", "session", "select", "DATABASE_URL"]

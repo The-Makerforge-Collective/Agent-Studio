@@ -6,23 +6,154 @@ from typing import Any
 
 from pydantic import BaseModel
 
-NODE_CATALOG = {
-    "trigger_api": {"inputs": [], "outputs": ["out"]},
-    "agent": {"inputs": ["in"], "outputs": ["out"]},
-    "transform": {"inputs": ["in"], "outputs": ["out"]},
-    "cli": {"inputs": ["in"], "outputs": ["out"]},
-    "quality_gate": {"inputs": ["in"], "outputs": ["out"]},
-    "memory_write": {"inputs": ["in"], "outputs": ["out"]},
-    "memory_read": {"inputs": ["in"], "outputs": ["out"]},
-    "retrieval": {"inputs": ["in"], "outputs": ["out"]},
-    "subworkflow": {"inputs": ["in"], "outputs": ["out"]},
-    "parallel_fanout": {"inputs": ["in"], "outputs": ["out"]},
-    "classifier": {"inputs": ["in"], "outputs": ["out"]},
-    "tool_call": {"inputs": ["in"], "outputs": ["out"]},
-    "guardrail": {"inputs": ["in"], "outputs": ["out"]},
-    "approval": {"inputs": ["in"], "outputs": ["out"]},
-    "router": {"inputs": ["in"], "outputs": ["a", "b"]},
-    "end": {"inputs": ["in"], "outputs": []},
+NODE_CATALOG: dict[str, dict[str, Any]] = {
+    "trigger_api": {
+        "inputs": [], "outputs": ["out"],
+        "label": "API Trigger", "category": "Triggers", "icon": "zap",
+        "description": "HTTP endpoint that starts the workflow",
+        "config_schema": {
+            "method": {"type": "enum", "options": ["GET", "POST", "PUT"], "default": "POST", "description": "HTTP method"},
+            "path": {"type": "string", "default": "/trigger", "description": "Endpoint path"},
+        },
+    },
+    "agent": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Agent", "category": "Core", "icon": "bot",
+        "description": "LLM agent with a system prompt",
+        "config_schema": {
+            "model": {"type": "enum", "options": ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"], "default": "gpt-4o", "description": "Model to use"},
+            "prompt": {"type": "text", "default": "", "description": "System prompt for the agent"},
+            "temperature": {"type": "number", "default": 0.7, "min": 0, "max": 2, "step": 0.1, "description": "Sampling temperature"},
+        },
+    },
+    "transform": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Transform", "category": "Core", "icon": "settings",
+        "description": "Transform data with an expression",
+        "config_schema": {
+            "expr": {"type": "text", "default": "", "description": "Expression to evaluate"},
+            "as": {"type": "string", "default": "result", "description": "Output variable name"},
+        },
+    },
+    "cli": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "CLI", "category": "Core", "icon": "terminal",
+        "description": "Run a shell command in a sandboxed container",
+        "config_schema": {
+            "command": {"type": "text", "default": "", "description": "Shell command to execute"},
+            "timeout": {"type": "number", "default": 30, "min": 1, "max": 300, "description": "Timeout in seconds"},
+        },
+    },
+    "tool_call": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Tool Call", "category": "Core", "icon": "wrench",
+        "description": "Call an external tool or API",
+        "config_schema": {
+            "method": {"type": "enum", "options": ["GET", "POST", "PUT", "DELETE"], "default": "POST", "description": "HTTP method"},
+            "url": {"type": "string", "default": "", "description": "Endpoint URL"},
+            "body": {"type": "json", "default": {}, "description": "Request body (JSON)"},
+            "project": {"type": "string", "default": "", "description": "JSONPath to extract from response"},
+            "as": {"type": "string", "default": "result", "description": "Output variable name"},
+        },
+    },
+    "router": {
+        "inputs": ["in"], "outputs": ["a", "b"],
+        "label": "Router", "category": "Control Flow", "icon": "git-branch",
+        "description": "Conditional branch (true → a, false → b)",
+        "config_schema": {
+            "when": {"type": "text", "default": "", "description": "Boolean expression to evaluate"},
+        },
+    },
+    "classifier": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Classifier", "category": "Control Flow", "icon": "tag",
+        "description": "Classify input into categories",
+        "config_schema": {
+            "labels": {"type": "json", "default": [], "description": "Classification labels (JSON array)"},
+            "prompt": {"type": "text", "default": "", "description": "Classification prompt"},
+            "as": {"type": "string", "default": "label", "description": "Output variable name"},
+        },
+    },
+    "parallel_fanout": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Parallel Fanout", "category": "Control Flow", "icon": "git-merge",
+        "description": "Fan out to parallel branches",
+        "config_schema": {
+            "branches": {"type": "json", "default": [], "description": "Workflow IDs to run in parallel"},
+            "merge_as": {"type": "string", "default": "results", "description": "Output variable name for merged results"},
+        },
+    },
+    "subworkflow": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Subworkflow", "category": "Control Flow", "icon": "layers",
+        "description": "Run another workflow as a step",
+        "config_schema": {
+            "workflow_id": {"type": "string", "default": "", "description": "ID of workflow to run"},
+        },
+    },
+    "memory_write": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Memory Write", "category": "Knowledge", "icon": "edit",
+        "description": "Write to memory store",
+        "config_schema": {
+            "key": {"type": "string", "default": "", "description": "Memory key"},
+            "from": {"type": "string", "default": "", "description": "State variable to persist"},
+        },
+    },
+    "memory_read": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Memory Read", "category": "Knowledge", "icon": "book-open",
+        "description": "Read from memory store",
+        "config_schema": {
+            "key": {"type": "string", "default": "", "description": "Memory key to read"},
+            "as": {"type": "string", "default": "", "description": "State variable to store result"},
+        },
+    },
+    "retrieval": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Retrieval", "category": "Knowledge", "icon": "search",
+        "description": "Retrieve from knowledge base",
+        "config_schema": {
+            "collection": {"type": "string", "default": "", "description": "Knowledge collection name"},
+            "query": {"type": "text", "default": "", "description": "Search query (or state variable with query_from)"},
+            "top_k": {"type": "number", "default": 5, "min": 1, "max": 50, "description": "Number of results"},
+            "as": {"type": "string", "default": "docs", "description": "Output variable name"},
+        },
+    },
+    "quality_gate": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Quality Gate", "category": "Review/Safety", "icon": "check-circle",
+        "description": "Assert quality conditions",
+        "config_schema": {
+            "checks": {"type": "json", "default": [], "description": "Predicate expressions to check (JSON array)"},
+            "threshold": {"type": "number", "default": 0.8, "min": 0, "max": 1, "step": 0.05, "description": "Pass threshold (0-1)"},
+        },
+    },
+    "guardrail": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Guardrail", "category": "Review/Safety", "icon": "shield",
+        "description": "Block or redact on regex match",
+        "config_schema": {
+            "input_from": {"type": "string", "default": "", "description": "State variable to scan"},
+            "blocked": {"type": "json", "default": [], "description": "Regex patterns to block (JSON array)"},
+            "action": {"type": "enum", "options": ["block", "redact"], "default": "block", "description": "Action on match"},
+        },
+    },
+    "approval": {
+        "inputs": ["in"], "outputs": ["out"],
+        "label": "Approval", "category": "Review/Safety", "icon": "user-check",
+        "description": "Pause for human approval",
+        "config_schema": {
+            "message": {"type": "text", "default": "", "description": "Message shown to approver"},
+            "approvers": {"type": "json", "default": [], "description": "Approver emails (JSON array)"},
+        },
+    },
+    "end": {
+        "inputs": ["in"], "outputs": [],
+        "label": "End", "category": "Control Flow", "icon": "square",
+        "description": "Terminal node; collects final state",
+        "config_schema": {},
+    },
 }
 
 NODE_CONFIG_SCHEMAS: dict[str, dict] = {

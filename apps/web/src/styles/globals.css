@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-surface: #faf8f5;
+  --color-surface-card: #ffffff;
+  --color-border: #e7dfd3;
+  --color-text: #2b2724;
+  --color-text-muted: #a89a86;
+  --color-accent: #9a5b2b;
+  --color-accent-hover: #7d4a22;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-surface: #1c1a18;
+    --color-surface-card: #252220;
+    --color-border: #3a342e;
+    --color-text: #e8e2da;
+    --color-text-muted: #a89a86;
+    --color-accent: #c4793a;
+    --color-accent-hover: #d98b4a;
+  }
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+.login-bg {
+  background-color: var(--color-surface);
+  background-image:
+    radial-gradient(circle at 20% 50%, rgba(154, 91, 43, 0.06) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(154, 91, 43, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 60% 80%, rgba(154, 91, 43, 0.05) 0%, transparent 45%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .login-bg {
+    background-image:
+      radial-gradient(circle at 20% 50%, rgba(196, 121, 58, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(196, 121, 58, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 60% 80%, rgba(196, 121, 58, 0.06) 0%, transparent 45%);
+  }
+}
+
+.react-flow__node {
+  font-family: inherit;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}
+
+.react-flow__handle {
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid var(--color-accent) !important;
+  background: var(--color-surface-card) !important;
+}
+
+.react-flow__handle:hover {
+  background: var(--color-accent) !important;
+}
+
+.react-flow__minimap {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.react-flow__controls {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.react-flow__controls button {
+  background: var(--color-surface-card);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.react-flow__controls button:hover {
+  background: var(--color-surface);
+}
