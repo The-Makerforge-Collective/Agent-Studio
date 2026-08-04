@@ -30,7 +30,7 @@ run-local:
 run-web:
 	cd $(WEB_DIR) && npm install && npm run dev
 
-## Build image, create kind cluster, deploy Postgres + control plane + web console
+## Build image, create kind cluster, deploy Postgres + control plane + web console + Keycloak
 kind-up:
 	podman build -t $(IMAGE) $(API_DIR)
 	podman build -t $(WEB_IMG) $(WEB_DIR)
@@ -39,12 +39,16 @@ kind-up:
 	podman save $(WEB_IMG) -o /tmp/kind-web.tar && kind load image-archive /tmp/kind-web.tar --name $(CLUSTER) && rm -f /tmp/kind-web.tar
 	kubectl --context $(CTX) apply -f deploy/kind/api.yaml
 	kubectl --context $(CTX) apply -f deploy/kind/web.yaml
+	kubectl --context $(CTX) apply -f deploy/kind/keycloak.yaml
 	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/postgres --timeout=180s
+	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/keycloak --timeout=180s
 	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/control-plane --timeout=180s
 	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/web-console --timeout=180s
-	@echo "\n✅ Agent Studio is up on kind"
-	@echo "   API:     http://localhost:8088"
-	@echo "   Console: http://localhost:3000\n"
+	@echo "\n✅ Agent Studio (M0+) is up on kind"
+	@echo "   API:                         http://localhost:8088"
+	@echo "   Console:                     http://localhost:3000"
+	@echo "   Keycloak admin console       http://localhost:8083"
+	@echo "   Keycloak realm               agent-studio\n"
 
 ## Rebuild + reload images after a code change (keeps the cluster)
 kind-redeploy:

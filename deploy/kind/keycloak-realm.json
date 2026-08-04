@@ -1,11 +1,12 @@
 {
   "realm": "agent-studio",
   "enabled": true,
+  "loginWithEmailAllowed": true,
+  "registrationAllowed": false,
   "roles": {
     "realm": [
-      { "name": "admin" },
-      { "name": "editor" },
-      { "name": "viewer" }
+      { "name": "user", "description": "Default user role" },
+      { "name": "admin", "description": "Administrator role" }
     ]
   },
   "clients": [
@@ -13,50 +14,47 @@
       "clientId": "agent-studio-web",
       "enabled": true,
       "publicClient": true,
-      "directAccessGrantsEnabled": true,
       "standardFlowEnabled": true,
-      "redirectUris": ["*"],
-      "webOrigins": ["*"],
-      "protocolMappers": [
-        {
-          "name": "tenant",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "config": {
-            "user.attribute": "tenant",
-            "claim.name": "tenant",
-            "jsonType.label": "String",
-            "access.token.claim": "true",
-            "id.token.claim": "true"
-          }
-        }
-      ]
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:8088/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:8088"
+      ],
+      "protocol": "openid-connect"
     }
   ],
   "users": [
     {
-      "username": "alice",
-      "email": "alice@acme.dev",
-      "firstName": "Alice",
-      "lastName": "Admin",
+      "username": "admin@agentstudio.dev",
+      "email": "admin@agentstudio.dev",
       "enabled": true,
       "emailVerified": true,
-      "requiredActions": [],
-      "attributes": { "tenant": ["acme"] },
-      "credentials": [{ "type": "password", "value": "alice12345", "temporary": false }],
-      "realmRoles": ["admin"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin12345",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin", "user"]
     },
     {
-      "username": "bob",
-      "email": "bob@acme.dev",
-      "firstName": "Bob",
-      "lastName": "Viewer",
+      "username": "user@agentstudio.dev",
+      "email": "user@agentstudio.dev",
       "enabled": true,
       "emailVerified": true,
-      "requiredActions": [],
-      "attributes": { "tenant": ["acme"] },
-      "credentials": [{ "type": "password", "value": "bob12345", "temporary": false }],
-      "realmRoles": ["viewer"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "user12345",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"]
     }
   ]
 }

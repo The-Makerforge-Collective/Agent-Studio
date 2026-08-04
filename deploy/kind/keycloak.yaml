@@ -1,4 +1,72 @@
-# Keycloak — OIDC/SSO identity provider (FR-12.5). Dev-mode, realm imported from a ConfigMap.
+# Keycloak OIDC/SSO for Agent Studio local dev
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  namespace: agent-studio-system
+data:
+  agent-studio-realm.json: |
+    {
+      "realm": "agent-studio",
+      "enabled": true,
+      "loginWithEmailAllowed": true,
+      "registrationAllowed": false,
+      "roles": {
+        "realm": [
+          { "name": "user", "description": "Default user role" },
+          { "name": "admin", "description": "Administrator role" }
+        ]
+      },
+      "clients": [
+        {
+          "clientId": "agent-studio-web",
+          "enabled": true,
+          "publicClient": true,
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "redirectUris": [
+            "http://localhost:3000/*",
+            "http://localhost:8088/*"
+          ],
+          "webOrigins": [
+            "http://localhost:3000",
+            "http://localhost:8088"
+          ],
+          "protocol": "openid-connect"
+        }
+      ],
+      "users": [
+        {
+          "username": "admin@agentstudio.dev",
+          "email": "admin@agentstudio.dev",
+          "enabled": true,
+          "emailVerified": true,
+          "credentials": [
+            {
+              "type": "password",
+              "value": "admin12345",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["admin", "user"]
+        },
+        {
+          "username": "user@agentstudio.dev",
+          "email": "user@agentstudio.dev",
+          "enabled": true,
+          "emailVerified": true,
+          "credentials": [
+            {
+              "type": "password",
+              "value": "user12345",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["user"]
+        }
+      ]
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,23 +81,24 @@ spec:
       containers:
         - name: keycloak
           image: quay.io/keycloak/keycloak:26.0
-          args: ["start-dev", "--import-realm", "--http-port=8083"]
+          args: ["start-dev", "--import-realm"]
           env:
-            - { name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin }
-            - { name: KC_BOOTSTRAP_ADMIN_PASSWORD, value: admin }
+            - { name: KC_HTTP_PORT, value: "8083" }
+            - { name: KEYCLOAK_ADMIN, value: "admin" }
+            - { name: KEYCLOAK_ADMIN_PASSWORD, value: "admin" }
             - { name: KC_HEALTH_ENABLED, value: "true" }
-            - { name: KC_HTTP_ENABLED, value: "true" }
           ports: [{ containerPort: 8083 }]
-          volumeMounts:
-            - { name: realm, mountPath: /opt/keycloak/data/import, readOnly: true }
           readinessProbe:
-            httpGet: { path: /realms/agent-studio, port: 8083 }
-            initialDelaySeconds: 25
-            periodSeconds: 5
-            failureThreshold: 40
+            httpGet: { path: /health/ready, port: 8083 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: realm-config
+              mountPath: /opt/keycloak/data/import/
       volumes:
-        - name: realm
-          configMap: { name: keycloak-realm }
+        - name: realm-config
+          configMap:
+            name: keycloak-realm
 ---
 apiVersion: v1
 kind: Service
@@ -39,3 +108,16 @@ metadata:
 spec:
   selector: { app: keycloak }
   ports: [{ port: 8083, targetPort: 8083 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-nodeport
+  namespace: agent-studio-system
+spec:
+  type: NodePort
+  selector: { app: keycloak }
+  ports:
+    - port: 8083
+      targetPort: 8083
+      nodePort: 30083
