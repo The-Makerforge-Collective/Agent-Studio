@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { Suspense, useState, useCallback, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   useNodesState,
   useEdgesState,
@@ -61,6 +62,16 @@ function specToFlowNodes(spec: WorkflowSpec): { nodes: Node[]; edges: Edge[] } {
 }
 
 export default function CanvasPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-surface text-text-muted">Loading...</div>}>
+      <CanvasPageInner />
+    </Suspense>
+  );
+}
+
+function CanvasPageInner() {
+  const searchParams = useSearchParams();
+  const hasWorkflowId = searchParams.has("id");
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -76,12 +87,21 @@ export default function CanvasPage() {
   const [traceSpans, setTraceSpans] = useState<TraceSpan[]>([]);
   const [running, setRunning] = useState(false);
   const cancelRunRef = useRef<(() => void) | null>(null);
+  const [redirectChecked, setRedirectChecked] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !isAuthenticated()) {
       window.location.href = "/login";
+      return;
     }
+    setRedirectChecked(true);
   }, []);
+
+  useEffect(() => {
+    if (redirectChecked && !hasWorkflowId && nodes.length === 0) {
+      window.location.href = "/dashboard";
+    }
+  }, [redirectChecked, hasWorkflowId, nodes.length]);
 
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),

@@ -1,6 +1,8 @@
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8088";
 
+const API_URL = BASE_URL;
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("auth_token");
@@ -164,4 +166,9 @@ export async function submitApproval(
     method: "POST",
     body: JSON.stringify({ approved }),
   });
+}
+
+export async function checkHealth(): Promise<{ status: string }> {
+  const res = await fetch(`${API_URL}/health`);
+  return res.json();
 }
