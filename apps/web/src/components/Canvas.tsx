@@ -4,6 +4,7 @@ import { useCallback, useRef } from "react";
 import {
   ReactFlow,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   type Node,
@@ -88,12 +89,16 @@ export default function Canvas({
         onDrop={handleDrop}
         nodeTypes={nodeTypes}
         fitView
+        snapToGrid
+        snapGrid={[16, 16]}
+        connectionLineStyle={{ stroke: "var(--color-accent)", strokeWidth: 2 }}
         defaultEdgeOptions={{
           animated: true,
           style: { stroke: "var(--color-accent)", strokeWidth: 2 },
         }}
+        proOptions={{ hideAttribution: true }}
       >
-        <Background color="var(--color-border)" gap={20} />
+        <Background variant={BackgroundVariant.Dots} color="var(--color-border)" gap={20} />
         <Controls className="!border-border !bg-surface-card !shadow-sm" />
         <MiniMap
           className="!border-border !bg-surface-card"
