@@ -283,6 +283,29 @@ def test_metrics_prometheus_format(client, auth):
     assert 'agent_studio_runs_status{status="completed"}' in r.text
 
 
+def test_nodes_catalog_returns_all_types_with_config_schema(client):
+    from agentstudio.compiler import NODE_CATALOG, NODE_CONFIG_SCHEMAS, NODE_DOCS
+    r = client.get("/api/v1/nodes")
+    assert r.status_code == 200
+    data = r.json()
+    catalog = data["catalog"]
+    assert isinstance(catalog, list)
+    returned_types = {n["type"] for n in catalog}
+    assert returned_types == set(NODE_CATALOG)                # every node type present
+    for entry in catalog:
+        assert "inputs" in entry and "outputs" in entry       # IO ports
+        assert "description" in entry and entry["description"]  # non-empty description
+        assert "config_schema" in entry                       # config schema included
+        schema = entry["config_schema"]
+        assert schema["type"] == "object"
+        assert "properties" in schema
+    # spot-check: agent node has model, prompt, temperature
+    agent = [n for n in catalog if n["type"] == "agent"][0]
+    props = agent["config_schema"]["properties"]
+    assert "model" in props and props["model"]["default"] == "gpt-4o"
+    assert "temperature" in props and props["temperature"]["type"] == "number"
+
+
 def test_self_docs_covers_every_node(client):
     from agentstudio.compiler import NODE_CATALOG
     docs = client.get("/api/v1/docs").json()

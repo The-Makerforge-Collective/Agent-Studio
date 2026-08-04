@@ -25,6 +25,116 @@ NODE_CATALOG = {
     "end": {"inputs": ["in"], "outputs": []},
 }
 
+NODE_CONFIG_SCHEMAS: dict[str, dict] = {
+    "trigger_api": {
+        "type": "object",
+        "properties": {
+            "method": {"type": "string", "default": "POST"},
+            "path": {"type": "string", "default": "/trigger"},
+        },
+    },
+    "agent": {
+        "type": "object",
+        "properties": {
+            "model": {"type": "string", "default": "gpt-4o"},
+            "prompt": {"type": "string", "default": ""},
+            "temperature": {"type": "number", "default": 0.7},
+        },
+    },
+    "transform": {
+        "type": "object",
+        "properties": {
+            "expr": {"type": "string", "default": ""},
+            "as": {"type": "string", "default": "result"},
+        },
+    },
+    "cli": {
+        "type": "object",
+        "properties": {
+            "command": {"type": "string", "default": ""},
+            "timeout": {"type": "integer", "default": 30},
+        },
+    },
+    "tool_call": {
+        "type": "object",
+        "properties": {
+            "tool": {"type": "string", "default": ""},
+            "args": {"type": "object", "default": {}},
+        },
+    },
+    "router": {
+        "type": "object",
+        "properties": {
+            "when": {"type": "string", "default": ""},
+        },
+    },
+    "classifier": {
+        "type": "object",
+        "properties": {
+            "labels": {"type": "array", "items": {"type": "string"}, "default": []},
+            "prompt": {"type": "string", "default": ""},
+        },
+    },
+    "parallel_fanout": {
+        "type": "object",
+        "properties": {
+            "branches": {"type": "integer", "default": 2},
+        },
+    },
+    "subworkflow": {
+        "type": "object",
+        "properties": {
+            "workflow_id": {"type": "string", "default": ""},
+        },
+    },
+    "memory_write": {
+        "type": "object",
+        "properties": {
+            "key": {"type": "string", "default": ""},
+            "value": {"type": "string", "default": ""},
+        },
+    },
+    "memory_read": {
+        "type": "object",
+        "properties": {
+            "key": {"type": "string", "default": ""},
+        },
+    },
+    "retrieval": {
+        "type": "object",
+        "properties": {
+            "collection": {"type": "string", "default": ""},
+            "query": {"type": "string", "default": ""},
+            "top_k": {"type": "integer", "default": 5},
+        },
+    },
+    "quality_gate": {
+        "type": "object",
+        "properties": {
+            "check": {"type": "string", "default": ""},
+            "threshold": {"type": "number", "default": 0.8},
+        },
+    },
+    "guardrail": {
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "default": ""},
+            "action": {"type": "string", "default": "block"},
+        },
+    },
+    "approval": {
+        "type": "object",
+        "properties": {
+            "approvers": {"type": "array", "items": {"type": "string"}, "default": []},
+            "message": {"type": "string", "default": ""},
+        },
+    },
+    "end": {
+        "type": "object",
+        "properties": {},
+    },
+}
+
 NODE_DOCS = {
     "trigger_api": "Entry node; seeds initial state from config.seed.",
     "agent": "Calls a model through the gateway (config.prompt); no provider keys in the app.",
