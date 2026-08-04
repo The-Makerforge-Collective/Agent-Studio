@@ -9,6 +9,11 @@ __pycache__/
 *.db
 *.sqlite
 
+# Node / Next.js
+node_modules/
+.next/
+out/
+
 # OS / editor
 .DS_Store
 *.swp
