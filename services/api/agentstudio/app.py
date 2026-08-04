@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from . import db, k8s, knowledge as knowledge_mod, memory, runtimeport
 from .auth import (Principal, create_token, get_principal, hash_password,
                    require_role, verify_password)
-from .compiler import NODE_CATALOG, NODE_DOCS, Spec, compile_spec
+from .compiler import NODE_CATALOG, NODE_CONFIG_SCHEMAS, NODE_DOCS, Spec, compile_spec
 from .executor import run_workflow
 
 app = FastAPI(title="Agent Studio — Control Plane")
@@ -170,8 +170,19 @@ def metrics() -> str:
 
 
 @app.get("/api/v1/nodes")
-def nodes(p: Principal = Depends(get_principal)) -> dict[str, Any]:
-    return {"catalog": NODE_CATALOG}
+def nodes() -> dict[str, Any]:
+    """Public node catalog with inputs, outputs, description, and config JSON Schema."""
+    catalog = [
+        {
+            "type": t,
+            "inputs": NODE_CATALOG[t]["inputs"],
+            "outputs": NODE_CATALOG[t]["outputs"],
+            "description": NODE_DOCS.get(t, ""),
+            "config_schema": NODE_CONFIG_SCHEMAS.get(t, {"type": "object", "properties": {}}),
+        }
+        for t in NODE_CATALOG
+    ]
+    return {"catalog": catalog}
 
 
 @app.get("/api/v1/docs")
