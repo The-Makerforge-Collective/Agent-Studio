@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { getEmail, logout } from "@/lib/auth";
 
 interface TopBarProps {
@@ -29,6 +30,7 @@ export default function TopBar({
   saving,
 }: TopBarProps) {
   const email = getEmail();
+  const router = useRouter();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -48,7 +50,6 @@ export default function TopBar({
 
   return (
     <div className="flex h-14 items-center justify-between border-b border-border bg-surface-card px-4">
-      {/* Left section: Logo + breadcrumb */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <svg
@@ -98,12 +99,12 @@ export default function TopBar({
         <div className="border-l border-border h-6" />
 
         <nav className="flex items-center gap-1.5 text-sm">
-          <a
-            href="/workflows"
+          <button
+            onClick={() => router.push("/workflows")}
             className="text-text-muted hover:text-text transition-colors"
           >
             Workflows
-          </a>
+          </button>
           <span className="text-text-muted">&rsaquo;</span>
           <input
             type="text"

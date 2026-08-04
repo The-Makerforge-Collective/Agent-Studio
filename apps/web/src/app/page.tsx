@@ -11,7 +11,7 @@ import {
   type OnConnect,
 } from "@xyflow/react";
 import { isAuthenticated } from "@/lib/auth";
-import { compileSpec, createWorkflow, deployWorkflow, startRun, getRunTrace } from "@/lib/api";
+import { compileSpec, createWorkflow, deployWorkflow, startRun, getRunTrace, getWorkflow } from "@/lib/api";
 import { WorkflowSpec, RunEvent, TraceSpan, NodeErrorMap } from "@/lib/types";
 import TopBar from "@/components/TopBar";
 import NodePalette from "@/components/NodePalette";
@@ -103,6 +103,27 @@ function CanvasPageInner() {
       window.location.href = "/dashboard";
     }
   }, [redirectChecked, hasWorkflowId, nodes.length]);
+
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (!id) return;
+
+    async function loadWorkflow(wfId: string) {
+      try {
+        const wf = await getWorkflow(wfId);
+        const spec = wf.spec as WorkflowSpec;
+        const { nodes: newNodes, edges: newEdges } = specToFlowNodes(spec);
+        setNodes(newNodes);
+        setEdges(newEdges);
+        setWorkflowName(wf.name);
+        setWorkflowId(wf.id);
+      } catch {
+        /* workflow not found or network error — start blank */
+      }
+    }
+
+    loadWorkflow(id);
+  }, [searchParams, setNodes, setEdges]);
 
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),
