@@ -1,11 +1,11 @@
 # Agent Studio — M0+ dev targets
-API_DIR := services/api
-IMAGE   := agent-studio/control-plane:dev
-CLUSTER := agent-studio
-CTX     := kind-agent-studio
-# Docker Desktop CLI is not always on PATH for non-interactive shells:
-export PATH := $(HOME)/.docker/bin:$(PATH)
-export KIND_EXPERIMENTAL_PROVIDER := docker
+API_DIR  := services/api
+WEB_DIR  := apps/web
+IMAGE    := localhost/agent-studio/control-plane:dev
+WEB_IMAGE := localhost/agent-studio/web-console:dev
+CLUSTER  := agent-studio
+CTX      := kind-agent-studio
+export KIND_EXPERIMENTAL_PROVIDER := podman
 
 .PHONY: run-local kind-up kind-redeploy kind-down test
 
@@ -25,22 +25,29 @@ run-local:
 	  pip install -q -r requirements.txt && \
 	  uvicorn agentstudio.app:app --host 0.0.0.0 --port 8090
 
-## Build image, create kind cluster, deploy Postgres + control plane → http://localhost:8088
+## Build images, create kind cluster, deploy everything → http://localhost:3000
 kind-up:
-	docker build -t $(IMAGE) $(API_DIR)
-	kind create cluster --name $(CLUSTER) --config deploy/kind/cluster.yaml
-	kind load docker-image $(IMAGE) --name $(CLUSTER)
+	podman build -t $(IMAGE) $(API_DIR)
+	podman build -t $(WEB_IMAGE) $(WEB_DIR)
+	kind create cluster --name $(CLUSTER) --config deploy/kind/cluster.yaml 2>/dev/null || true
+	podman save $(IMAGE) -o /tmp/kind-api.tar && kind load image-archive /tmp/kind-api.tar --name $(CLUSTER) && rm -f /tmp/kind-api.tar
+	podman save $(WEB_IMAGE) -o /tmp/kind-web.tar && kind load image-archive /tmp/kind-web.tar --name $(CLUSTER) && rm -f /tmp/kind-web.tar
 	kubectl --context $(CTX) apply -f deploy/kind/api.yaml
+	kubectl --context $(CTX) apply -f deploy/kind/web.yaml
 	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/postgres --timeout=180s
 	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/control-plane --timeout=180s
-	@echo "\n✅ Agent Studio (M0+) is up on kind → http://localhost:8088\n"
+	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/web-console --timeout=180s
+	@echo "\n✅ Agent Studio is up on kind → Web: http://localhost:3000  API: http://localhost:8088\n"
 
-## Rebuild + reload the image after a code change (keeps the cluster)
+## Rebuild + reload images after a code change (keeps the cluster)
 kind-redeploy:
-	docker build -t $(IMAGE) $(API_DIR)
-	kind load docker-image $(IMAGE) --name $(CLUSTER)
-	kubectl --context $(CTX) -n agent-studio-system rollout restart deploy/control-plane
+	podman build -t $(IMAGE) $(API_DIR)
+	podman build -t $(WEB_IMAGE) $(WEB_DIR)
+	podman save $(IMAGE) -o /tmp/kind-api.tar && kind load image-archive /tmp/kind-api.tar --name $(CLUSTER) && rm -f /tmp/kind-api.tar
+	podman save $(WEB_IMAGE) -o /tmp/kind-web.tar && kind load image-archive /tmp/kind-web.tar --name $(CLUSTER) && rm -f /tmp/kind-web.tar
+	kubectl --context $(CTX) -n agent-studio-system rollout restart deploy/control-plane deploy/web-console
 	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/control-plane --timeout=180s
+	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/web-console --timeout=180s
 
 kind-down:
 	kind delete cluster --name $(CLUSTER)
