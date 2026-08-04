@@ -62,6 +62,7 @@ export interface NodeTypeInfo {
   label: string;
   category: NodeCategory;
   description: string;
+  icon: string;
   defaultConfig: Record<string, unknown>;
   outputs?: string[];
 }
