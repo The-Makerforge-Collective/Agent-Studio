@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { getEmail, logout } from "@/lib/auth";
 
 interface TopBarProps {
@@ -28,6 +29,7 @@ export default function TopBar({
   saving,
 }: TopBarProps) {
   const email = getEmail();
+  const router = useRouter();
 
   return (
     <div className="flex h-12 items-center justify-between border-b border-border bg-surface-card px-4">
@@ -35,6 +37,12 @@ export default function TopBar({
         <span className="text-sm font-bold tracking-wide text-accent">
           Agent Studio
         </span>
+        <button
+          onClick={() => router.push("/workflows")}
+          className="rounded border border-border px-3 py-1 text-xs font-medium text-text-muted hover:bg-surface hover:text-text"
+        >
+          Workflows
+        </button>
         <input
           type="text"
           value={workflowName}
