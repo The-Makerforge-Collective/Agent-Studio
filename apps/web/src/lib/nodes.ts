@@ -6,6 +6,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "API Trigger",
     category: "Triggers",
     description: "HTTP endpoint that starts the workflow",
+    icon: "⚡",
     defaultConfig: { method: "POST", path: "/trigger" },
   },
   {
@@ -13,6 +14,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Agent",
     category: "Core",
     description: "LLM agent with a system prompt",
+    icon: "🤖",
     defaultConfig: { model: "gpt-4o", prompt: "", temperature: 0.7 },
   },
   {
@@ -20,6 +22,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Transform",
     category: "Core",
     description: "Transform data with an expression",
+    icon: "⚙️",
     defaultConfig: { expr: "", as: "result" },
   },
   {
@@ -27,6 +30,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "CLI",
     category: "Core",
     description: "Run a shell command",
+    icon: "💻",
     defaultConfig: { command: "", timeout: 30 },
   },
   {
@@ -34,6 +38,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Tool Call",
     category: "Core",
     description: "Call an external tool or API",
+    icon: "🔧",
     defaultConfig: { tool: "", args: {} },
   },
   {
@@ -41,6 +46,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Router",
     category: "Control Flow",
     description: "Conditional branch (true/false)",
+    icon: "🔀",
     defaultConfig: { when: "" },
     outputs: ["a", "b"],
   },
@@ -49,6 +55,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Classifier",
     category: "Control Flow",
     description: "Classify input into categories",
+    icon: "🏷️",
     defaultConfig: { labels: [], prompt: "" },
   },
   {
@@ -56,6 +63,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Parallel Fanout",
     category: "Control Flow",
     description: "Fan out to parallel branches",
+    icon: "🔱",
     defaultConfig: { branches: 2 },
   },
   {
@@ -63,6 +71,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Subworkflow",
     category: "Control Flow",
     description: "Run another workflow as a step",
+    icon: "📋",
     defaultConfig: { workflow_id: "" },
   },
   {
@@ -70,6 +79,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Memory Write",
     category: "Knowledge",
     description: "Write to memory store",
+    icon: "✏️",
     defaultConfig: { key: "", value: "" },
   },
   {
@@ -77,6 +87,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Memory Read",
     category: "Knowledge",
     description: "Read from memory store",
+    icon: "📖",
     defaultConfig: { key: "" },
   },
   {
@@ -84,6 +95,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Retrieval",
     category: "Knowledge",
     description: "Retrieve from vector store",
+    icon: "📚",
     defaultConfig: { collection: "", query: "", top_k: 5 },
   },
   {
@@ -91,6 +103,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Quality Gate",
     category: "Review/Safety",
     description: "Assert quality conditions",
+    icon: "✅",
     defaultConfig: { check: "", threshold: 0.8 },
   },
   {
@@ -98,6 +111,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Guardrail",
     category: "Review/Safety",
     description: "Block or redact on regex match",
+    icon: "🛡️",
     defaultConfig: { pattern: "", action: "block" },
   },
   {
@@ -105,6 +119,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "Approval",
     category: "Review/Safety",
     description: "Pause for human approval",
+    icon: "👤",
     defaultConfig: { approvers: [], message: "" },
   },
   {
@@ -112,6 +127,7 @@ export const NODE_TYPES: NodeTypeInfo[] = [
     label: "End",
     category: "Control Flow",
     description: "Terminal node",
+    icon: "🏁",
     defaultConfig: {},
   },
 ];
