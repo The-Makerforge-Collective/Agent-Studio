@@ -9,7 +9,7 @@ CTX      := kind-agent-studio
 export PATH := $(HOME)/.docker/bin:$(PATH)
 export KIND_EXPERIMENTAL_PROVIDER := docker
 
-.PHONY: run-local run-web kind-up kind-redeploy kind-down test
+.PHONY: run-local run-web kind-up kind-redeploy kind-down test e2e
 
 ## Run all test suites (control plane, gateway, substrate)
 test:
@@ -57,3 +57,7 @@ kind-redeploy:
 
 kind-down:
 	kind delete cluster --name $(CLUSTER)
+
+## E2E smoke test against a running API (local or kind)
+e2e:
+	API_URL=http://localhost:8088 bash tests/e2e.sh
