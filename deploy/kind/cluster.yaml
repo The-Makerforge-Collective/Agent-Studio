@@ -6,3 +6,4 @@ nodes:
     extraPortMappings:
       - { containerPort: 30080, hostPort: 8088 }   # control-plane API (/api/v1) — 8080 is taken by gvproxy
       - { containerPort: 30300, hostPort: 3000 }   # web console (Next.js)
+      - { containerPort: 30083, hostPort: 8083 }   # Keycloak OIDC/SSO
