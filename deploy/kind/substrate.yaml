@@ -44,7 +44,7 @@ spec:
       serviceAccountName: substrate
       containers:
         - name: substrate
-          image: agent-studio/substrate:dev
+          image: localhost/agent-studio/substrate:dev
           imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 9100 }]
           readinessProbe:
