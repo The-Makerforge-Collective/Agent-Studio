@@ -55,6 +55,8 @@ type CustomNodeData = {
   nodeType: string;
   config: Record<string, unknown>;
   label?: string;
+  _compileErrors?: string[];
+  _unreachable?: boolean;
 };
 
 function CustomNodeComponent({ data, selected }: NodeProps & { data: CustomNodeData }) {
@@ -68,12 +70,23 @@ function CustomNodeComponent({ data, selected }: NodeProps & { data: CustomNodeD
     .join(", ");
 
   const categoryColor = getCategoryColor(data.nodeType);
+  const hasErrors = data._compileErrors && data._compileErrors.length > 0;
+  const isUnreachable = data._unreachable === true;
+
+  let borderClass: string;
+  if (hasErrors) {
+    borderClass = "border-red-500 border-2 shadow-md";
+  } else if (isUnreachable) {
+    borderClass = "border-amber-400 border-2 shadow-md";
+  } else if (selected) {
+    borderClass = "ring-2 ring-accent border-accent shadow-md";
+  } else {
+    borderClass = "border-border";
+  }
 
   return (
     <div
-      className={`rounded-lg border bg-surface-card px-3 py-2 shadow-md transition-transform duration-150 hover:scale-[1.02] ${
-        selected ? "ring-2 ring-accent border-accent" : "border-border"
-      }`}
+      className={`rounded-lg border bg-surface-card px-3 py-2 shadow-md transition-transform duration-150 hover:scale-[1.02] ${borderClass}`}
       style={{ minWidth: 160, borderLeft: `4px solid ${categoryColor}` }}
     >
       <Handle type="target" position={Position.Top} className="!bg-surface-card !border-accent !border-2 !w-[10px] !h-[10px]" />
@@ -88,6 +101,19 @@ function CustomNodeComponent({ data, selected }: NodeProps & { data: CustomNodeD
       </div>
       {configSummary && (
         <div className="mt-1 truncate text-xs text-text-muted">{configSummary}</div>
+      )}
+      {hasErrors && (
+        <div
+          className="mt-1 truncate rounded bg-red-500/10 px-1.5 py-0.5 text-xs text-red-600"
+          title={data._compileErrors!.join("\n")}
+        >
+          {data._compileErrors![0]}
+        </div>
+      )}
+      {isUnreachable && !hasErrors && (
+        <div className="mt-1 rounded bg-amber-400/10 px-1.5 py-0.5 text-xs text-amber-600">
+          unreachable
+        </div>
       )}
       {hasMultipleOutputs ? (
         <>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -15,6 +15,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import type { NodeErrorMap } from "@/lib/types";
 import CustomNode from "./CustomNode";
 
 const nodeTypes: NodeTypes = {
@@ -29,6 +30,7 @@ interface CanvasProps {
   onConnect: OnConnect;
   onNodeSelect: (node: Node | null) => void;
   onDrop: (type: string, config: Record<string, unknown>, position: { x: number; y: number }) => void;
+  nodeErrorMap?: NodeErrorMap;
 }
 
 export default function Canvas({
@@ -39,6 +41,7 @@ export default function Canvas({
   onConnect,
   onNodeSelect,
   onDrop,
+  nodeErrorMap,
 }: CanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -75,10 +78,20 @@ export default function Canvas({
     onNodeSelect(null);
   }, [onNodeSelect]);
 
+  // Enrich nodes with compile diagnostics so CustomNode can render them
+  const enrichedNodes = useMemo(() => {
+    if (!nodeErrorMap || nodeErrorMap.size === 0) return nodes;
+    return nodes.map((n) => {
+      const diag = nodeErrorMap.get(n.id);
+      if (!diag) return n;
+      return { ...n, data: { ...n.data, _compileErrors: diag.errors, _unreachable: diag.unreachable } };
+    });
+  }, [nodes, nodeErrorMap]);
+
   return (
     <div ref={wrapperRef} className="h-full flex-1">
       <ReactFlow
-        nodes={nodes}
+        nodes={enrichedNodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

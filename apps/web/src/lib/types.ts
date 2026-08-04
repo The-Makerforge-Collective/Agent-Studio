@@ -28,7 +28,11 @@ export interface CompileResult {
   ok: boolean;
   errors: string[];
   layers?: string[][];
+  unreachable?: string[];
 }
+
+/** Per-node compile diagnostics passed to canvas nodes. */
+export type NodeErrorMap = Map<string, { errors: string[]; unreachable: boolean }>;
 
 export interface RunEvent {
   event: string;
