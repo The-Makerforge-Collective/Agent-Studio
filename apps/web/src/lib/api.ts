@@ -83,7 +83,7 @@ export async function getWorkflow(
 export async function compileSpec(spec: {
   nodes: unknown[];
   edges: unknown[];
-}): Promise<{ ok: boolean; errors: string[]; layers?: string[][] }> {
+}): Promise<{ ok: boolean; errors: string[]; layers?: string[][]; unreachable?: string[] }> {
   return request("/api/v1/workflows/compile", {
     method: "POST",
     body: JSON.stringify(spec),

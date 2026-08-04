@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   useNodesState,
   useEdgesState,
@@ -11,7 +11,7 @@ import {
 } from "@xyflow/react";
 import { isAuthenticated } from "@/lib/auth";
 import { compileSpec, createWorkflow, deployWorkflow, startRun, getRunTrace } from "@/lib/api";
-import { WorkflowSpec, RunEvent, TraceSpan } from "@/lib/types";
+import { WorkflowSpec, RunEvent, TraceSpan, NodeErrorMap } from "@/lib/types";
 import TopBar from "@/components/TopBar";
 import NodePalette from "@/components/NodePalette";
 import Canvas from "@/components/Canvas";
@@ -70,6 +70,7 @@ export default function CanvasPage() {
   const [compileStatus, setCompileStatus] = useState<{
     ok: boolean;
     errors: string[];
+    unreachable?: string[];
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
@@ -147,7 +148,7 @@ export default function CanvasPage() {
     const spec = flowNodesToSpec(nodes, edges);
     try {
       const result = await compileSpec(spec);
-      setCompileStatus({ ok: result.ok, errors: result.errors || [] });
+      setCompileStatus({ ok: result.ok, errors: result.errors || [], unreachable: result.unreachable });
     } catch (err) {
       setCompileStatus({
         ok: false,
@@ -220,6 +221,48 @@ export default function CanvasPage() {
     [setNodes, setEdges]
   );
 
+  // Build per-node error map from compile result
+  const nodeErrorMap: NodeErrorMap = useMemo(() => {
+    const map: NodeErrorMap = new Map();
+    if (!compileStatus) return map;
+
+    // Parse error strings to extract node IDs.
+    // Known patterns:
+    //   "... on node 'agent_1'"
+    //   "edge source 'xyz' is not a node"
+    const nodeIdPattern = /on node '([^']+)'/;
+    const edgeSourcePattern = /edge source '([^']+)'/;
+
+    for (const err of compileStatus.errors) {
+      let nodeId: string | null = null;
+      const nodeMatch = err.match(nodeIdPattern);
+      if (nodeMatch) {
+        nodeId = nodeMatch[1];
+      } else {
+        const edgeMatch = err.match(edgeSourcePattern);
+        if (edgeMatch) {
+          nodeId = edgeMatch[1];
+        }
+      }
+      if (nodeId) {
+        const entry = map.get(nodeId) || { errors: [], unreachable: false };
+        entry.errors.push(err);
+        map.set(nodeId, entry);
+      }
+    }
+
+    // Mark unreachable nodes
+    if (compileStatus.unreachable) {
+      for (const nodeId of compileStatus.unreachable) {
+        const entry = map.get(nodeId) || { errors: [], unreachable: false };
+        entry.unreachable = true;
+        map.set(nodeId, entry);
+      }
+    }
+
+    return map;
+  }, [compileStatus]);
+
   const currentSpec = flowNodesToSpec(nodes, edges);
 
   return (
@@ -251,6 +294,7 @@ export default function CanvasPage() {
             onConnect={onConnect}
             onNodeSelect={handleNodeSelect}
             onDrop={handleDrop}
+            nodeErrorMap={nodeErrorMap}
           />
         )}
         <ConfigPanel
