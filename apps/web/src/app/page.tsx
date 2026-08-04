@@ -1,0 +1,265 @@
+"use client";
+
+import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  type Node,
+  type Edge,
+  type OnConnect,
+} from "@xyflow/react";
+import { isAuthenticated } from "@/lib/auth";
+import { compileSpec, createWorkflow, deployWorkflow, startRun, getRunTrace } from "@/lib/api";
+import { WorkflowSpec, RunEvent, TraceSpan } from "@/lib/types";
+import TopBar from "@/components/TopBar";
+import NodePalette from "@/components/NodePalette";
+import Canvas from "@/components/Canvas";
+import ConfigPanel from "@/components/ConfigPanel";
+import RunPanel from "@/components/RunPanel";
+import SpecEditor from "@/components/SpecEditor";
+
+let nodeIdCounter = 0;
+
+function generateNodeId(type: string): string {
+  nodeIdCounter += 1;
+  return `${type}_${nodeIdCounter}`;
+}
+
+function flowNodesToSpec(nodes: Node[], edges: Edge[]): WorkflowSpec {
+  return {
+    nodes: nodes.map((n) => ({
+      id: n.id,
+      type: (n.data as { nodeType: string }).nodeType,
+      config: (n.data as { config: Record<string, unknown> }).config || {},
+    })),
+    edges: edges.map((e) => ({
+      source: e.source,
+      target: e.target,
+      ...(e.sourceHandle ? { sourceHandle: e.sourceHandle } : {}),
+    })),
+  };
+}
+
+function specToFlowNodes(spec: WorkflowSpec): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = spec.nodes.map((n, i) => ({
+    id: n.id,
+    type: "custom",
+    position: { x: 250, y: i * 120 + 50 },
+    data: { nodeType: n.type, config: n.config, label: n.type },
+    selected: false,
+  }));
+  const edges: Edge[] = spec.edges.map((e, i) => ({
+    id: `e-${i}`,
+    source: e.source,
+    target: e.target,
+    sourceHandle: e.sourceHandle,
+    animated: true,
+    style: { stroke: "var(--color-accent)", strokeWidth: 2 },
+  }));
+  return { nodes, edges };
+}
+
+export default function CanvasPage() {
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [workflowName, setWorkflowName] = useState("Untitled Workflow");
+  const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const [showSpec, setShowSpec] = useState(false);
+  const [compileStatus, setCompileStatus] = useState<{
+    ok: boolean;
+    errors: string[];
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
+  const [traceSpans, setTraceSpans] = useState<TraceSpan[]>([]);
+  const [running, setRunning] = useState(false);
+  const cancelRunRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !isAuthenticated()) {
+      window.location.href = "/login";
+    }
+  }, []);
+
+  const onConnect: OnConnect = useCallback(
+    (params) => setEdges((eds) => addEdge(params, eds)),
+    [setEdges]
+  );
+
+  const handleDrop = useCallback(
+    (type: string, config: Record<string, unknown>, position: { x: number; y: number }) => {
+      const id = generateNodeId(type);
+      const newNode: Node = {
+        id,
+        type: "custom",
+        position,
+        data: { nodeType: type, config: { ...config }, label: type },
+      };
+      setNodes((nds) => [...nds, newNode]);
+    },
+    [setNodes]
+  );
+
+  const handleNodeSelect = useCallback(
+    (node: Node | null) => {
+      setSelectedNode(node);
+      if (node) {
+        setNodes((nds) =>
+          nds.map((n) => ({ ...n, selected: n.id === node.id }))
+        );
+      }
+    },
+    [setNodes]
+  );
+
+  const handleConfigChange = useCallback(
+    (nodeId: string, config: Record<string, unknown>) => {
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId
+            ? { ...n, data: { ...n.data, config } }
+            : n
+        )
+      );
+      setSelectedNode((prev) =>
+        prev && prev.id === nodeId
+          ? { ...prev, data: { ...prev.data, config } }
+          : prev
+      );
+    },
+    [setNodes]
+  );
+
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) =>
+        eds.filter((e) => e.source !== nodeId && e.target !== nodeId)
+      );
+      setSelectedNode(null);
+    },
+    [setNodes, setEdges]
+  );
+
+  const handleCompile = useCallback(async () => {
+    const spec = flowNodesToSpec(nodes, edges);
+    try {
+      const result = await compileSpec(spec);
+      setCompileStatus({ ok: result.ok, errors: result.errors || [] });
+    } catch (err) {
+      setCompileStatus({
+        ok: false,
+        errors: [err instanceof Error ? err.message : "Compile failed"],
+      });
+    }
+  }, [nodes, edges]);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    const spec = flowNodesToSpec(nodes, edges);
+    try {
+      const result = await createWorkflow(workflowName, spec);
+      setWorkflowId(result.id);
+    } catch {
+      /* ignored */
+    } finally {
+      setSaving(false);
+    }
+  }, [nodes, edges, workflowName]);
+
+  const handleDeploy = useCallback(async () => {
+    if (!workflowId) {
+      alert("Save the workflow first");
+      return;
+    }
+    try {
+      await deployWorkflow(workflowId);
+      alert("Deployed");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Deploy failed");
+    }
+  }, [workflowId]);
+
+  const handleRun = useCallback(async () => {
+    if (!workflowId) {
+      alert("Save the workflow first");
+      return;
+    }
+    setRunning(true);
+    setRunEvents([]);
+    setTraceSpans([]);
+    const cancel = startRun(
+      workflowId,
+      (evt) => {
+        setRunEvents((prev) => [
+          ...prev,
+          { event: evt.event, data: evt.data as unknown as Record<string, unknown> },
+        ]);
+      },
+      async () => {
+        setRunning(false);
+        try {
+          const trace = await getRunTrace(workflowId);
+          setTraceSpans(trace);
+        } catch {
+          /* ignored */
+        }
+      }
+    );
+    cancelRunRef.current = cancel;
+  }, [workflowId]);
+
+  const handleSpecChange = useCallback(
+    (spec: WorkflowSpec) => {
+      const { nodes: newNodes, edges: newEdges } = specToFlowNodes(spec);
+      setNodes(newNodes);
+      setEdges(newEdges);
+    },
+    [setNodes, setEdges]
+  );
+
+  const currentSpec = flowNodesToSpec(nodes, edges);
+
+  return (
+    <div className="flex h-screen flex-col">
+      <TopBar
+        workflowName={workflowName}
+        onNameChange={setWorkflowName}
+        onCompile={handleCompile}
+        onSave={handleSave}
+        onDeploy={handleDeploy}
+        onRun={handleRun}
+        onToggleSpec={() => setShowSpec(!showSpec)}
+        showSpec={showSpec}
+        compileStatus={compileStatus}
+        saving={saving}
+      />
+      <div className="flex flex-1 overflow-hidden">
+        <NodePalette />
+        {showSpec ? (
+          <div className="flex-1">
+            <SpecEditor spec={currentSpec} onSpecChange={handleSpecChange} />
+          </div>
+        ) : (
+          <Canvas
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeSelect={handleNodeSelect}
+            onDrop={handleDrop}
+          />
+        )}
+        <ConfigPanel
+          node={selectedNode}
+          onConfigChange={handleConfigChange}
+          onDelete={handleDeleteNode}
+        />
+      </div>
+      <RunPanel events={runEvents} trace={traceSpans} running={running} />
+    </div>
+  );
+}
