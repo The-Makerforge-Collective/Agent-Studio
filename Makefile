@@ -34,10 +34,13 @@ kind-up:
 	podman save $(WEB_IMAGE) -o /tmp/kind-web.tar && kind load image-archive /tmp/kind-web.tar --name $(CLUSTER) && rm -f /tmp/kind-web.tar
 	kubectl --context $(CTX) apply -f deploy/kind/api.yaml
 	kubectl --context $(CTX) apply -f deploy/kind/web.yaml
+	kubectl --context $(CTX) create configmap keycloak-realm -n agent-studio-system --from-file=agent-studio.json=deploy/kind/keycloak-realm.json --dry-run=client -o yaml | kubectl --context $(CTX) apply -f -
+	kubectl --context $(CTX) apply -f deploy/kind/keycloak.yaml
 	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/postgres --timeout=180s
 	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/control-plane --timeout=180s
 	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/web-console --timeout=180s
-	@echo "\n✅ Agent Studio is up on kind → Web: http://localhost:3000  API: http://localhost:8088\n"
+	kubectl --context $(CTX) -n agent-studio-system rollout status deploy/keycloak --timeout=300s
+	@echo "\n✅ Agent Studio is up on kind → Web: http://localhost:3000  API: http://localhost:8088  Keycloak: http://localhost:8083\n"
 
 ## Rebuild + reload images after a code change (keeps the cluster)
 kind-redeploy:
