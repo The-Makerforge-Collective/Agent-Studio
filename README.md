@@ -3,7 +3,7 @@
 Open-source platform for building AI agents and multi-agent workflows visually, running on Kubernetes —
 multi-tenant, each agent isolated in its own namespace, with sessions executing as sandboxed actor pods.
 
-> **Status — honest.** The [PRD](PRD.md) and [implementation doc](IMPLEMENTATION.md) describe the full
+> **Status — honest.** The [PRD](docs/product/PRD.md) and [implementation doc](docs/product/IMPLEMENTATION.md) describe the full
 > vision. This repo contains a **real, running vertical slice** of it on `kind`, built and tested with
 > **no stubs or mocks in the logic** — plus real, minimal implementations of the two external
 > dependencies. It is **not** the complete PRD: the upstream gVisor/microVM snapshotting (Agent
@@ -64,8 +64,8 @@ services/api/          control-plane API (compiler, engine, auth/RBAC, persisten
 services/gateway/      agentgateway — LLM connectivity fabric (auth + budget)
 services/substrate/    Agent Substrate — actor runtime (session-as-pod)
 deploy/kind/           kind cluster config + manifests (Postgres, Keycloak, gateway, substrate, API)
-PRD.md                 product requirements (the full vision)
-IMPLEMENTATION.md      implementation plan (how the full thing is built)
+docs/product/PRD.md            product requirements (the full vision)
+docs/product/IMPLEMENTATION.md implementation plan (how the full thing is built)
 ```
 
 ## License

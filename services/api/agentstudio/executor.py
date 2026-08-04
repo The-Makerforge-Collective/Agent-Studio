@@ -204,6 +204,26 @@ def _project(data, path):
     return data
 
 
+def _egress_blocked(url: str) -> str | None:
+    """SSRF/egress guard (FR-5.5): block loopback/link-local (metadata) unless allowlisted."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+    host = urlparse(url).hostname or ""
+    allow = {h.strip() for h in os.environ.get("TOOL_ALLOW_HOSTS", "").split(",") if h.strip()}
+    if host in allow:
+        return None
+    if os.environ.get("TOOL_EGRESS_GUARD", "1") != "1":
+        return None
+    try:
+        ip = ipaddress.ip_address(socket.gethostbyname(host))
+    except Exception:
+        return None                        # unresolvable → let the request fail naturally
+    if ip.is_loopback or ip.is_link_local:
+        return f"egress blocked: {host} -> {ip} (loopback/link-local)"
+    return None
+
+
 def _exec_tool_call(node, state) -> dict[str, Any]:
     """Call a REST endpoint and thread the (optionally projected) response into state (FR-6.1)."""
     url = node.config.get("url")
@@ -212,6 +232,9 @@ def _exec_tool_call(node, state) -> dict[str, Any]:
     import httpx
     method = node.config.get("method", "GET").upper()
     url = _interp(url, state)
+    blocked = _egress_blocked(url)
+    if blocked:
+        raise ExecError(blocked)
     headers = _interp(node.config.get("headers", {}), state)
     body = _interp(node.config.get("body"), state) if node.config.get("body") is not None else None
     resp = httpx.request(method, url, headers=headers,
