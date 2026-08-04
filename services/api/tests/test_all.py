@@ -272,6 +272,17 @@ def test_api_health(client):
     assert client.get("/health").json()["status"] == "ok"
 
 
+def test_metrics_prometheus_format(client, auth):
+    client.post("/api/v1/runs", headers=auth, json={
+        "nodes": [{"id": "t", "type": "trigger_api"}, {"id": "e", "type": "end"}],
+        "edges": [{"source": "t", "target": "e"}]})
+    r = client.get("/metrics")
+    assert r.status_code == 200 and "text/plain" in r.headers["content-type"]
+    assert "agent_studio_runs_total" in r.text
+    assert "# TYPE agent_studio_runs_total counter" in r.text
+    assert 'agent_studio_runs_status{status="completed"}' in r.text
+
+
 def test_self_docs_covers_every_node(client):
     from agentstudio.compiler import NODE_CATALOG
     docs = client.get("/api/v1/docs").json()

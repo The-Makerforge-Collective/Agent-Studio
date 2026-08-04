@@ -13,7 +13,7 @@ import time
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from . import db, k8s, knowledge as knowledge_mod, memory, runtimeport
@@ -119,6 +119,36 @@ def health() -> dict[str, Any]:
     return {"status": "ok", "service": "agent-studio-control-plane",
             "db": db.DATABASE_URL.split("://", 1)[0], "in_cluster": k8s.in_cluster(),
             "multi_tenant": True}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def metrics() -> str:
+    """Prometheus-format metrics (observability, FR-9). Unauthenticated for scraping."""
+    from collections import Counter
+    with db.session() as s:
+        runs = s.scalars(db.select(db.Run)).all()
+        n_workflows = len(s.scalars(db.select(db.Workflow)).all())
+        n_pending = len([a for a in s.scalars(db.select(db.ApprovalRequest)).all()
+                         if a.state == "pending"])
+    by_status = Counter(r.status for r in runs)
+    lines = [
+        "# HELP agent_studio_runs_total Total workflow runs.",
+        "# TYPE agent_studio_runs_total counter",
+        f"agent_studio_runs_total {len(runs)}",
+        "# HELP agent_studio_runs_status Runs by terminal status.",
+        "# TYPE agent_studio_runs_status gauge",
+        *[f'agent_studio_runs_status{{status="{st}"}} {c}' for st, c in sorted(by_status.items())],
+        "# HELP agent_studio_workflows_total Stored workflows.",
+        "# TYPE agent_studio_workflows_total gauge",
+        f"agent_studio_workflows_total {n_workflows}",
+        "# HELP agent_studio_pending_approvals Runs paused awaiting approval.",
+        "# TYPE agent_studio_pending_approvals gauge",
+        f"agent_studio_pending_approvals {n_pending}",
+        "# HELP agent_studio_node_types Node types in the catalog.",
+        "# TYPE agent_studio_node_types gauge",
+        f"agent_studio_node_types {len(NODE_CATALOG)}",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 @app.get("/api/v1/nodes")
