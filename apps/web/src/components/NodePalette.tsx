@@ -1,10 +1,23 @@
 "use client";
 
-import { getNodesByCategory, CATEGORIES } from "@/lib/nodes";
-import { NodeTypeInfo } from "@/lib/types";
+import { useState, useEffect } from "react";
+import { NODE_TYPES, CATEGORIES, loadNodeCatalog } from "@/lib/nodes";
+import { NodeTypeInfo, NodeCategory } from "@/lib/types";
 
 export default function NodePalette() {
-  const grouped = getNodesByCategory();
+  const [catalog, setCatalog] = useState<NodeTypeInfo[]>(NODE_TYPES);
+
+  useEffect(() => {
+    loadNodeCatalog().then(setCatalog);
+  }, []);
+
+  const grouped: Record<NodeCategory, NodeTypeInfo[]> = {} as Record<
+    NodeCategory,
+    NodeTypeInfo[]
+  >;
+  for (const cat of CATEGORIES) {
+    grouped[cat] = catalog.filter((n) => n.category === cat);
+  }
 
   function onDragStart(event: React.DragEvent, nodeType: NodeTypeInfo) {
     event.dataTransfer.setData(

@@ -64,4 +64,13 @@ export interface NodeTypeInfo {
   description: string;
   defaultConfig: Record<string, unknown>;
   outputs?: string[];
+  configSchema?: Record<string, unknown>;
+}
+
+export interface NodeCatalogEntry {
+  type: string;
+  description: string;
+  inputs: string[];
+  outputs: string[];
+  config_schema: Record<string, unknown>;
 }

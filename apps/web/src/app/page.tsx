@@ -11,7 +11,8 @@ import {
 } from "@xyflow/react";
 import { isAuthenticated } from "@/lib/auth";
 import { compileSpec, createWorkflow, deployWorkflow, startRun, getRunTrace } from "@/lib/api";
-import { WorkflowSpec, RunEvent, TraceSpan } from "@/lib/types";
+import { WorkflowSpec, RunEvent, TraceSpan, NodeTypeInfo } from "@/lib/types";
+import { loadNodeCatalog } from "@/lib/nodes";
 import TopBar from "@/components/TopBar";
 import NodePalette from "@/components/NodePalette";
 import Canvas from "@/components/Canvas";
@@ -75,12 +76,17 @@ export default function CanvasPage() {
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
   const [traceSpans, setTraceSpans] = useState<TraceSpan[]>([]);
   const [running, setRunning] = useState(false);
+  const [catalog, setCatalog] = useState<NodeTypeInfo[]>([]);
   const cancelRunRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !isAuthenticated()) {
       window.location.href = "/login";
     }
+  }, []);
+
+  useEffect(() => {
+    loadNodeCatalog().then(setCatalog);
   }, []);
 
   const onConnect: OnConnect = useCallback(
@@ -91,15 +97,23 @@ export default function CanvasPage() {
   const handleDrop = useCallback(
     (type: string, config: Record<string, unknown>, position: { x: number; y: number }) => {
       const id = generateNodeId(type);
+      const catalogEntry = catalog.find((n) => n.type === type);
       const newNode: Node = {
         id,
         type: "custom",
         position,
-        data: { nodeType: type, config: { ...config }, label: type },
+        data: {
+          nodeType: type,
+          config: { ...config },
+          label: type,
+          ...(catalogEntry?.configSchema
+            ? { configSchema: catalogEntry.configSchema }
+            : {}),
+        },
       };
       setNodes((nds) => [...nds, newNode]);
     },
-    [setNodes]
+    [setNodes, catalog]
   );
 
   const handleNodeSelect = useCallback(

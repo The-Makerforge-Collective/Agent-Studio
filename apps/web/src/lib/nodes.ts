@@ -1,4 +1,5 @@
-import { NodeTypeInfo, NodeCategory } from "./types";
+import { NodeTypeInfo, NodeCategory, NodeCatalogEntry } from "./types";
+import { fetchNodeCatalog } from "./api";
 
 export const NODE_TYPES: NodeTypeInfo[] = [
   {
@@ -134,4 +135,72 @@ export function getNodesByCategory(): Record<NodeCategory, NodeTypeInfo[]> {
 
 export function getNodeTypeInfo(type: string): NodeTypeInfo | undefined {
   return NODE_TYPES.find((n) => n.type === type);
+}
+
+let catalogCache: NodeTypeInfo[] | null = null;
+
+function labelFromType(type: string): string {
+  return type
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function categoryFromType(type: string): NodeCategory {
+  if (type.startsWith("trigger")) return "Triggers";
+  if (
+    type === "router" ||
+    type === "classifier" ||
+    type === "parallel_fanout" ||
+    type === "subworkflow" ||
+    type === "end"
+  )
+    return "Control Flow";
+  if (type.startsWith("memory") || type === "retrieval") return "Knowledge";
+  if (
+    type === "quality_gate" ||
+    type === "guardrail" ||
+    type === "approval"
+  )
+    return "Review/Safety";
+  return "Core";
+}
+
+function extractDefaults(
+  schema: Record<string, unknown>
+): Record<string, unknown> {
+  const defaults: Record<string, unknown> = {};
+  const properties = schema.properties as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  if (!properties) return defaults;
+  for (const [key, prop] of Object.entries(properties)) {
+    if (prop && "default" in prop) {
+      defaults[key] = prop.default;
+    }
+  }
+  return defaults;
+}
+
+function mapCatalogEntry(entry: NodeCatalogEntry): NodeTypeInfo {
+  return {
+    type: entry.type,
+    label: labelFromType(entry.type),
+    category: categoryFromType(entry.type),
+    description: entry.description,
+    defaultConfig: extractDefaults(entry.config_schema),
+    outputs: entry.outputs.length > 0 ? entry.outputs : undefined,
+    configSchema: entry.config_schema,
+  };
+}
+
+export async function loadNodeCatalog(): Promise<NodeTypeInfo[]> {
+  if (catalogCache) return catalogCache;
+  try {
+    const entries = await fetchNodeCatalog();
+    catalogCache = entries.map(mapCatalogEntry);
+    return catalogCache;
+  } catch {
+    return NODE_TYPES;
+  }
 }

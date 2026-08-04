@@ -1,3 +1,5 @@
+import { NodeCatalogEntry } from "./types";
+
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8088";
 
@@ -53,11 +55,8 @@ export async function login(
   return data;
 }
 
-export async function fetchNodeCatalog(): Promise<Record<string, unknown>> {
-  const data = await request<{ catalog: Record<string, unknown> }>(
-    "/api/v1/nodes"
-  );
-  return data.catalog;
+export async function fetchNodeCatalog(): Promise<NodeCatalogEntry[]> {
+  return request<NodeCatalogEntry[]>("/api/v1/nodes");
 }
 
 export async function createWorkflow(
