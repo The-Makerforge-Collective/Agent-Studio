@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-surface: #faf8f5;
+  --color-surface-card: #ffffff;
+  --color-border: #e7dfd3;
+  --color-text: #2b2724;
+  --color-text-muted: #a89a86;
+  --color-accent: #9a5b2b;
+  --color-accent-hover: #7d4a22;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-surface: #1c1a18;
+    --color-surface-card: #252220;
+    --color-border: #3a342e;
+    --color-text: #e8e2da;
+    --color-text-muted: #a89a86;
+    --color-accent: #c4793a;
+    --color-accent-hover: #d98b4a;
+  }
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+.react-flow__node {
+  font-family: inherit;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}
