@@ -116,7 +116,7 @@ spec:
             - { name: DEV_RESET_DB, value: "0" }     # persist across redeploys (additive create_all)
             # OIDC/SSO via Keycloak (primary auth path; local HS256 remains the dual-issuer fallback)
             - { name: OIDC_JWKS_URL, value: "http://keycloak.agent-studio-system.svc:8083/realms/agent-studio/protocol/openid-connect/certs" }
-            - { name: OIDC_ISSUER, value: "http://keycloak.agent-studio-system.svc:8083/realms/agent-studio" }
+            - { name: OIDC_ISSUER, value: "http://localhost:8083/realms/agent-studio" }
             - { name: OIDC_TENANT_CLAIM, value: "tenant" }
             # RuntimePort → Agent Substrate: cli nodes execute as actor pods (FR-3.6, FR-4.3)
             - { name: SUBSTRATE_URL, value: "http://substrate.agent-studio-system.svc:9100" }

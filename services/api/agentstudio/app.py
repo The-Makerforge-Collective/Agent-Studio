@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -23,6 +24,14 @@ from .compiler import NODE_CATALOG, NODE_DOCS, Spec, compile_spec
 from .executor import run_workflow
 
 app = FastAPI(title="Agent Studio — Control Plane")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
