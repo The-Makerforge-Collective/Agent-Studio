@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { Suspense, useState, useCallback, useEffect, useRef } from "react";
 import {
   useNodesState,
   useEdgesState,
@@ -9,8 +9,9 @@ import {
   type Edge,
   type OnConnect,
 } from "@xyflow/react";
+import { useSearchParams } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
-import { compileSpec, createWorkflow, deployWorkflow, startRun, getRunTrace } from "@/lib/api";
+import { compileSpec, createWorkflow, deployWorkflow, startRun, getRunTrace, getWorkflow } from "@/lib/api";
 import { WorkflowSpec, RunEvent, TraceSpan } from "@/lib/types";
 import TopBar from "@/components/TopBar";
 import NodePalette from "@/components/NodePalette";
@@ -61,6 +62,15 @@ function specToFlowNodes(spec: WorkflowSpec): { nodes: Node[]; edges: Edge[] } {
 }
 
 export default function CanvasPage() {
+  return (
+    <Suspense>
+      <CanvasPageInner />
+    </Suspense>
+  );
+}
+
+function CanvasPageInner() {
+  const searchParams = useSearchParams();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -82,6 +92,27 @@ export default function CanvasPage() {
       window.location.href = "/login";
     }
   }, []);
+
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (!id) return;
+
+    async function loadWorkflow(wfId: string) {
+      try {
+        const wf = await getWorkflow(wfId);
+        const spec = wf.spec as WorkflowSpec;
+        const { nodes: newNodes, edges: newEdges } = specToFlowNodes(spec);
+        setNodes(newNodes);
+        setEdges(newEdges);
+        setWorkflowName(wf.name);
+        setWorkflowId(wf.id);
+      } catch {
+        /* workflow not found or network error — start blank */
+      }
+    }
+
+    loadWorkflow(id);
+  }, [searchParams, setNodes, setEdges]);
 
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),
