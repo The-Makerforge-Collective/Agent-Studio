@@ -83,15 +83,37 @@ export async function getWorkflow(
 export async function compileSpec(spec: {
   nodes: unknown[];
   edges: unknown[];
-}): Promise<{ ok: boolean; errors: string[]; layers?: string[][] }> {
+}): Promise<{ ok: boolean; errors: string[]; layers?: string[][]; unreachable?: string[] }> {
   return request("/api/v1/workflows/compile", {
     method: "POST",
     body: JSON.stringify(spec),
   });
 }
 
+export async function updateWorkflow(
+  id: string,
+  body: { name?: string; spec?: { nodes: unknown[]; edges: unknown[] }; public?: boolean }
+): Promise<unknown> {
+  return request(`/api/v1/workflows/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteWorkflow(id: string): Promise<unknown> {
+  return request(`/api/v1/workflows/${id}`, { method: "DELETE" });
+}
+
 export async function deployWorkflow(id: string): Promise<unknown> {
   return request(`/api/v1/workflows/${id}/deploy`, { method: "POST" });
+}
+
+export async function downloadWorkflowCode(id: string): Promise<string> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${BASE_URL}/api/v1/workflows/${id}/code`, { headers });
+  return res.text();
 }
 
 export function startRun(
@@ -239,4 +261,96 @@ export async function listRuns(
   if (opts?.offset) params.set("offset", String(opts.offset));
   const qs = params.toString();
   return request(`/api/v1/runs${qs ? `?${qs}` : ""}`);
+}
+
+// ----------------------------- MCP Servers -----------------------------
+export interface McpServer {
+  id: string;
+  name: string;
+  url: string;
+  transport: string;
+  auth_header: string;
+  headers: Record<string, string>;
+  tools: { name: string; description?: string }[];
+  status: string;
+  created_by?: string;
+  created_at?: number;
+}
+
+export async function listMcpServers(): Promise<McpServer[]> {
+  return request("/api/v1/mcp-servers");
+}
+
+export async function registerMcpServer(body: {
+  name: string;
+  url: string;
+  transport?: string;
+  auth_header?: string;
+  headers?: Record<string, string>;
+}): Promise<McpServer> {
+  return request("/api/v1/mcp-servers", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteMcpServer(id: string): Promise<unknown> {
+  return request(`/api/v1/mcp-servers/${id}`, { method: "DELETE" });
+}
+
+export async function pingMcpServer(
+  id: string
+): Promise<{ status: string; tools?: unknown[]; tools_count?: number; error?: string }> {
+  return request(`/api/v1/mcp-servers/${id}/ping`, { method: "POST" });
+}
+
+// ----------------------------- Skills -----------------------------
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  spec: Record<string, unknown>;
+  created_by?: string;
+  created_at?: number;
+}
+
+export async function listSkills(): Promise<Skill[]> {
+  return request("/api/v1/skills");
+}
+
+export async function getSkill(id: string): Promise<Skill> {
+  return request(`/api/v1/skills/${id}`);
+}
+
+export async function createSkill(body: {
+  name: string;
+  description?: string;
+  spec: Record<string, unknown>;
+}): Promise<Skill> {
+  return request("/api/v1/skills", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateSkill(
+  id: string,
+  body: { name?: string; description?: string; spec?: Record<string, unknown> }
+): Promise<Skill> {
+  return request(`/api/v1/skills/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteSkill(id: string): Promise<unknown> {
+  return request(`/api/v1/skills/${id}`, { method: "DELETE" });
+}
+
+export async function exportSkill(id: string): Promise<string> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${BASE_URL}/api/v1/skills/${id}/export`, { headers });
+  return res.text();
 }

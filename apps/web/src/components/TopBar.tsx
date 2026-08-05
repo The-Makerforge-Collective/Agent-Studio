@@ -11,9 +11,12 @@ interface TopBarProps {
   onDeploy: () => void;
   onRun: () => void;
   onToggleSpec: () => void;
+  onDownloadCode?: () => void;
+  onDelete?: () => void;
   showSpec: boolean;
   compileStatus: { ok: boolean; errors: string[] } | null;
   saving: boolean;
+  workflowId?: string | null;
 }
 
 export default function TopBar({
@@ -24,9 +27,12 @@ export default function TopBar({
   onDeploy,
   onRun,
   onToggleSpec,
+  onDownloadCode: _onDownloadCode,
+  onDelete: _onDelete,
   showSpec,
   compileStatus,
   saving,
+  workflowId: _workflowId,
 }: TopBarProps) {
   const email = getEmail();
   const [showUserMenu, setShowUserMenu] = useState(false);

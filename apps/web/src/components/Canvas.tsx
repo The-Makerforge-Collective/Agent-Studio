@@ -28,7 +28,9 @@ interface CanvasProps {
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
   onNodeSelect: (node: Node | null) => void;
-  onDrop: (type: string, config: Record<string, unknown>, position: { x: number; y: number }) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onDrop: (type: string, config: Record<string, unknown>, position: { x: number; y: number }, configSchema?: any) => void;
+  nodeErrorMap?: Map<string, { errors: string[]; unreachable: boolean }>;
 }
 
 export default function Canvas({
@@ -39,6 +41,7 @@ export default function Canvas({
   onConnect,
   onNodeSelect,
   onDrop,
+  nodeErrorMap: _nodeErrorMap,
 }: CanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
