@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { isAuthenticated, logout } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/auth";
+import AppShell from "@/components/AppShell";
 import {
   listMcpServers,
   registerMcpServer,
@@ -243,35 +243,17 @@ export default function McpServersPage() {
   }
 
   return (
-    <div className="dashboard-fade-in min-h-screen bg-surface">
-      <header className="border-b border-border bg-surface-card">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-8 py-5">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-white text-sm font-bold">A</div>
-              <span className="text-lg font-semibold text-text">Agent Studio</span>
-            </Link>
-            <span className="text-text-muted">/</span>
-            <span className="text-lg font-semibold text-text">MCP Servers</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowRegister(!showRegister)}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-            >
-              {showRegister ? "Cancel" : "Register Server"}
-            </button>
-            <button
-              onClick={logout}
-              className="rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:text-red-500 hover:border-red-200 transition-colors"
-            >
-              Sign out
-            </button>
-          </div>
+    <AppShell>
+      <div className="dashboard-fade-in px-8 py-8 mx-auto max-w-6xl">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-text">MCP Servers</h2>
+          <button
+            onClick={() => setShowRegister(!showRegister)}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            {showRegister ? "Cancel" : "Register Server"}
+          </button>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-8 py-8">
         <p className="mb-6 text-sm text-text-muted">
           Register remote{" "}
           <span className="font-medium text-text">MCP</span> (Model Context Protocol) servers.
@@ -600,7 +582,7 @@ export default function McpServersPage() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }

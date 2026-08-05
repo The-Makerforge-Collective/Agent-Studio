@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { getEmail, logout } from "@/lib/auth";
+import { useRouter } from "next/navigation";
 
-interface TopBarProps {
+export interface TopBarProps {
   workflowName: string;
   onNameChange: (name: string) => void;
   onCompile: () => void;
@@ -11,9 +10,12 @@ interface TopBarProps {
   onDeploy: () => void;
   onRun: () => void;
   onToggleSpec: () => void;
+  onDownloadCode?: () => void;
+  onDelete?: () => void;
   showSpec: boolean;
   compileStatus: { ok: boolean; errors: string[] } | null;
   saving: boolean;
+  workflowId?: string | null;
 }
 
 export default function TopBar({
@@ -24,86 +26,20 @@ export default function TopBar({
   onDeploy,
   onRun,
   onToggleSpec,
+  onDownloadCode,
+  onDelete,
   showSpec,
   compileStatus,
   saving,
+  workflowId,
 }: TopBarProps) {
-  const email = getEmail();
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  const userInitial = email ? email.charAt(0).toUpperCase() : "U";
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowUserMenu(false);
-      }
-    }
-    if (showUserMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showUserMenu]);
-
+  const router = useRouter();
   return (
-    <div className="flex h-14 items-center justify-between border-b border-border bg-surface-card px-4">
-      {/* Left section: Logo + breadcrumb */}
+    <div className="flex h-12 items-center justify-between border-b border-border bg-surface-card px-4">
+      {/* Left section: breadcrumb */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            className="text-accent"
-          >
-            <path
-              d="M12 2L3 7v10l9 5 9-5V7l-9-5z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              fill="none"
-            />
-            <circle cx="12" cy="4" r="2" fill="currentColor" />
-            <circle cx="5" cy="15" r="2" fill="currentColor" />
-            <circle cx="19" cy="15" r="2" fill="currentColor" />
-            <line
-              x1="12"
-              y1="4"
-              x2="5"
-              y2="15"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-            <line
-              x1="12"
-              y1="4"
-              x2="19"
-              y2="15"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-            <line
-              x1="5"
-              y1="15"
-              x2="19"
-              y2="15"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-          </svg>
-          <span className="text-sm font-semibold text-text">Agent Studio</span>
-        </div>
-
-        <div className="border-l border-border h-6" />
-
         <nav className="flex items-center gap-1.5 text-sm">
-          <a
-            href="/workflows"
-            className="text-text-muted hover:text-text transition-colors"
-          >
-            Workflows
-          </a>
+          <span className="text-text-muted">Workflows</span>
           <span className="text-text-muted">&rsaquo;</span>
           <input
             type="text"
@@ -151,6 +87,36 @@ export default function TopBar({
             <span>&#9654;</span>
             Run
           </button>
+          {workflowId && (
+            <button
+              onClick={() => router.push(`/agents/${workflowId}`)}
+              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-text hover:bg-surface-card transition-colors"
+            >
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                <path d="M2 2.5h10a1 1 0 011 1v5a1 1 0 01-1 1H8L5.5 12v-2.5H2a1 1 0 01-1-1v-5a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="5" cy="6" r="0.6" fill="currentColor"/>
+                <circle cx="7" cy="6" r="0.6" fill="currentColor"/>
+                <circle cx="9" cy="6" r="0.6" fill="currentColor"/>
+              </svg>
+              Chat
+            </button>
+          )}
+          {onDownloadCode && (
+            <button
+              onClick={onDownloadCode}
+              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs font-medium text-text hover:bg-surface-card transition-colors"
+            >
+              &#8595; Code
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              className="flex items-center gap-1.5 rounded-full border border-red-300 px-3 py-1 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
+            >
+              Delete
+            </button>
+          )}
           <div className="flex rounded-full border border-border overflow-hidden">
             <button
               onClick={showSpec ? onToggleSpec : undefined}
@@ -176,7 +142,7 @@ export default function TopBar({
         </div>
       </div>
 
-      {/* Right section: Status + user */}
+      {/* Right section: Status */}
       <div className="flex items-center gap-3">
         {compileStatus && (
           <div
@@ -194,42 +160,6 @@ export default function TopBar({
             {compileStatus.ok ? "Valid" : compileStatus.errors[0]}
           </div>
         )}
-
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setShowUserMenu((v) => !v)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-white hover:bg-accent-hover transition-colors"
-            title={email ?? "User"}
-          >
-            {userInitial}
-          </button>
-
-          {showUserMenu && (
-            <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-lg border border-border bg-surface-card shadow-lg">
-              <div className="px-3 py-2 border-b border-border">
-                <p className="text-xs font-medium text-text truncate">
-                  {email}
-                </p>
-              </div>
-              <div className="py-1">
-                <button className="w-full px-3 py-1.5 text-left text-xs text-text hover:bg-surface transition-colors">
-                  Settings
-                </button>
-                <button className="w-full px-3 py-1.5 text-left text-xs text-text hover:bg-surface transition-colors">
-                  Help
-                </button>
-              </div>
-              <div className="border-t border-border py-1">
-                <button
-                  onClick={logout}
-                  className="w-full px-3 py-1.5 text-left text-xs text-red-500 hover:bg-surface transition-colors"
-                >
-                  Log out
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

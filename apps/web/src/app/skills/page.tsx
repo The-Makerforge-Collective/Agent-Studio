@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import Link from "next/link";
-import { isAuthenticated, logout } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/auth";
+import AppShell from "@/components/AppShell";
 import { listSkills, createSkill, updateSkill, deleteSkill, exportSkill, getSkill, Skill } from "@/lib/api";
 
 const SKILL_MD_TEMPLATE = `---
@@ -407,36 +407,17 @@ export default function SkillsPage() {
   const lineCount = activeContent.split("\n").length;
 
   return (
-    <div className="dashboard-fade-in min-h-screen bg-surface">
-      <header className="border-b border-border bg-surface-card">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-8 py-5">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-white text-sm font-bold">A</div>
-              <span className="text-lg font-semibold text-text">Agent Studio</span>
-            </Link>
-            <span className="text-text-muted">/</span>
-            <span className="text-lg font-semibold text-text">Skills</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => { setShowCreate(!showCreate); if (showCreate) resetEditor(); }}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-            >
-              {showCreate ? "Cancel" : "New Skill"}
-
-            </button>
-            <button
-              onClick={logout}
-              className="rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:text-red-500 hover:border-red-200 transition-colors"
-            >
-              Sign out
-            </button>
-          </div>
+    <AppShell>
+      <div className="dashboard-fade-in px-8 py-8 mx-auto max-w-7xl">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-text">Skills</h2>
+          <button
+            onClick={() => { setShowCreate(!showCreate); if (showCreate) resetEditor(); }}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            {showCreate ? "Cancel" : "New Skill"}
+          </button>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-8 py-8">
         {showCreate && (
           <div className="mb-8">
             {/* Skill metadata bar */}
@@ -749,7 +730,7 @@ export default function SkillsPage() {
             )}
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }
