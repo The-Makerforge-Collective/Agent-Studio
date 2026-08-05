@@ -165,3 +165,78 @@ export async function submitApproval(
     body: JSON.stringify({ approved }),
   });
 }
+
+// ----------------------------- LLM Providers -----------------------------
+export interface LlmProvider {
+  id: string;
+  name: string;
+  provider_type: string;
+  base_url: string;
+  is_default: boolean;
+  created_by?: string;
+  created_at?: number;
+}
+
+export async function listProviders(): Promise<LlmProvider[]> {
+  return request("/api/v1/settings/providers");
+}
+
+export async function createProvider(body: {
+  name: string;
+  provider_type: string;
+  base_url: string;
+  api_key: string;
+  is_default: boolean;
+}): Promise<LlmProvider> {
+  return request("/api/v1/settings/providers", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateProvider(
+  id: string,
+  body: {
+    name?: string;
+    provider_type?: string;
+    base_url?: string;
+    api_key?: string;
+    is_default?: boolean;
+  }
+): Promise<LlmProvider> {
+  return request(`/api/v1/settings/providers/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteProvider(id: string): Promise<unknown> {
+  return request(`/api/v1/settings/providers/${id}`, { method: "DELETE" });
+}
+
+export async function testProvider(
+  id: string
+): Promise<{ status: string; message: string }> {
+  return request(`/api/v1/settings/providers/${id}/test`, { method: "POST" });
+}
+
+// ----------------------------- Runs -----------------------------
+export interface RunSummary {
+  id: string;
+  workflow_id: string;
+  status: string;
+  started_at: number;
+  finished_at: number;
+  error_message: string;
+}
+
+export async function listRuns(
+  opts?: { workflow_id?: string; limit?: number; offset?: number }
+): Promise<RunSummary[]> {
+  const params = new URLSearchParams();
+  if (opts?.workflow_id) params.set("workflow_id", opts.workflow_id);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.offset) params.set("offset", String(opts.offset));
+  const qs = params.toString();
+  return request(`/api/v1/runs${qs ? `?${qs}` : ""}`);
+}
