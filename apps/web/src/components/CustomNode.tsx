@@ -55,6 +55,8 @@ type CustomNodeData = {
   nodeType: string;
   config: Record<string, unknown>;
   label?: string;
+  _errors?: string[];
+  _unreachable?: boolean;
 };
 
 function CustomNodeComponent({ data, selected }: NodeProps & { data: CustomNodeData }) {
@@ -68,13 +70,21 @@ function CustomNodeComponent({ data, selected }: NodeProps & { data: CustomNodeD
     .join(", ");
 
   const categoryColor = getCategoryColor(data.nodeType);
+  const hasErrors = data._errors && data._errors.length > 0;
+  const isUnreachable = data._unreachable;
 
   return (
     <div
       className={`rounded-lg border bg-surface-card px-3 py-2 shadow-md transition-transform duration-150 hover:scale-[1.02] ${
-        selected ? "ring-2 ring-accent border-accent" : "border-border"
+        hasErrors
+          ? "ring-2 ring-red-500 border-red-500"
+          : isUnreachable
+          ? "ring-2 ring-amber-400 border-amber-400 opacity-60"
+          : selected
+          ? "ring-2 ring-accent border-accent"
+          : "border-border"
       }`}
-      style={{ minWidth: 160, borderLeft: `4px solid ${categoryColor}` }}
+      style={{ minWidth: 160, borderLeft: `4px solid ${hasErrors ? "#ef4444" : isUnreachable ? "#f59e0b" : categoryColor}` }}
     >
       <Handle type="target" position={Position.Top} className="!bg-surface-card !border-accent !border-2 !w-[10px] !h-[10px]" />
       <div className="flex items-center gap-2">
@@ -88,6 +98,16 @@ function CustomNodeComponent({ data, selected }: NodeProps & { data: CustomNodeD
       </div>
       {configSummary && (
         <div className="mt-1 truncate text-xs text-text-muted">{configSummary}</div>
+      )}
+      {hasErrors && (
+        <div className="mt-1 space-y-0.5">
+          {data._errors!.map((err, i) => (
+            <div key={i} className="truncate text-[10px] text-red-500">⚠ {err}</div>
+          ))}
+        </div>
+      )}
+      {isUnreachable && !hasErrors && (
+        <div className="mt-1 text-[10px] text-amber-500">⚠ Unreachable node</div>
       )}
       {hasMultipleOutputs ? (
         <>
