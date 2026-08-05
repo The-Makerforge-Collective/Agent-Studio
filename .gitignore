@@ -19,3 +19,4 @@ out/
 *.swp
 .idea/
 .vscode/
+tsconfig.tsbuildinfo
