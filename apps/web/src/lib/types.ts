@@ -55,6 +55,15 @@ export interface Approval {
   payload: Record<string, unknown>;
 }
 
+export type NodeErrorMap = Map<string, { errors: string[]; unreachable: boolean }>;
+
+export interface ConfigFieldSchema {
+  type: string;
+  description?: string;
+  default?: unknown;
+  enum?: string[];
+}
+
 export type NodeCategory = "Triggers" | "Core" | "Control Flow" | "Knowledge" | "Review/Safety";
 
 export interface NodeTypeInfo {

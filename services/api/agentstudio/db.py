@@ -16,7 +16,12 @@ from typing import Any
 from sqlalchemy import JSON, Boolean, String, create_engine, or_, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-from .auth import hash_password
+import base64
+import hashlib as _hashlib
+
+from cryptography.fernet import Fernet
+
+from .auth import hash_password, JWT_SECRET
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./agentstudio.db")
 _engine = create_engine(DATABASE_URL, future=True)
@@ -80,6 +85,8 @@ class Run(Base):
     workflow_id: Mapped[str] = mapped_column(String, default="")
     status: Mapped[str] = mapped_column(String, default="running")
     started_at: Mapped[float] = mapped_column(default=lambda: time.time())
+    finished_at: Mapped[float] = mapped_column(default=0.0)
+    error_message: Mapped[str] = mapped_column(String, default="")
 
 
 class KnowledgeChunk(Base):
@@ -152,6 +159,33 @@ class McpServer(Base):
     status: Mapped[str] = mapped_column(String, default="pending")
     created_by: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[float] = mapped_column(default=lambda: time.time())
+
+
+class LlmProvider(Base):
+    """Tenant-scoped LLM provider config with encrypted API key."""
+    __tablename__ = "llm_providers"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_ulid)
+    tenant_id: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String)
+    provider_type: Mapped[str] = mapped_column(String, default="openai")
+    base_url: Mapped[str] = mapped_column(String, default="")
+    api_key_encrypted: Mapped[str] = mapped_column(String, default="")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String, default="")
+    created_at: Mapped[float] = mapped_column(default=lambda: time.time())
+
+
+def _fernet() -> Fernet:
+    key = base64.urlsafe_b64encode(_hashlib.sha256(JWT_SECRET.encode()).digest())
+    return Fernet(key)
+
+
+def encrypt_api_key(plain: str) -> str:
+    return _fernet().encrypt(plain.encode()).decode()
+
+
+def decrypt_api_key(cipher: str) -> str:
+    return _fernet().decrypt(cipher.encode()).decode()
 
 
 class RunNode(Base):
@@ -289,5 +323,6 @@ def session() -> Session:
 
 
 __all__ = ["Tenant", "User", "Membership", "Workflow", "Deployment", "Run", "RunNode", "Memory",
-           "KnowledgeChunk", "Schedule", "ApprovalRequest", "Skill", "McpServer",
+           "KnowledgeChunk", "Schedule", "ApprovalRequest", "Skill", "McpServer", "LlmProvider",
+           "encrypt_api_key", "decrypt_api_key",
            "init_db", "session", "select", "DATABASE_URL"]

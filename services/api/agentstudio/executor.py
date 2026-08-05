@@ -69,11 +69,15 @@ def _exec_router(node, state) -> dict[str, Any]:
     return {"predicate": when, "value": truth, "active_target": chosen}
 
 
-def _exec_agent(node, state) -> dict[str, Any]:
+def _exec_agent(node, state, provider=None) -> dict[str, Any]:
     base = os.environ.get("AGENT_MODEL_BASE_URL")
     key = os.environ.get("AGENT_MODEL_API_KEY")
+    ptype = "openai"
+    if provider:
+        base = provider.get("base_url") or base
+        key = provider.get("api_key") or key
+        ptype = provider.get("provider_type", "openai")
     prompt = node.config.get("prompt", "")
-    # interpolate {name} refs from state
     try:
         prompt = prompt.format(**state)
     except Exception:
@@ -83,16 +87,28 @@ def _exec_agent(node, state) -> dict[str, Any]:
                 "note": "agent client is real but no model endpoint configured "
                         "(set AGENT_MODEL_BASE_URL + AGENT_MODEL_API_KEY via the gateway)",
                 "prompt": prompt}
-    import httpx  # real HTTP call to an OpenAI-compatible endpoint (agentgateway route)
-    model = node.config.get("model", "gpt-4o-mini")
-    resp = httpx.post(
-        f"{base.rstrip('/')}/chat/completions",
-        headers={"Authorization": f"Bearer {key}"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-        timeout=60,
-    )
-    resp.raise_for_status()
-    content = resp.json()["choices"][0]["message"]["content"]
+    import httpx
+    model = node.config.get("model", "gpt-4o-mini" if ptype != "anthropic" else "claude-sonnet-4-20250514")
+    if ptype == "anthropic":
+        resp = httpx.post(
+            f"{base.rstrip('/')}/v1/messages",
+            headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                     "content-type": "application/json"},
+            json={"model": model, "max_tokens": 1024,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        content = resp.json()["content"][0]["text"]
+    else:
+        resp = httpx.post(
+            f"{base.rstrip('/')}/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"]
     state[node.config.get("as", "agent_output")] = content
     return {"credentialed": True, "model": model, "output": content}
 
@@ -302,7 +318,8 @@ EXECUTORS = {
 def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
                  runtime=None, namespace: str | None = None,
                  memory=None, tenant_id: str | None = None,
-                 knowledge=None, sub_runner=None, resume=None) -> Iterator[dict[str, Any]]:
+                 knowledge=None, sub_runner=None, resume=None,
+                 provider=None) -> Iterator[dict[str, Any]]:
     """Execute the compiled workflow, yielding event dicts. Real state threading + routing.
     `cli` nodes execute as Substrate actor pods; `memory_*`/`retrieval` use the bound stores.
     An `approval` node pauses the run (yields `paused` + resume context) until approved; passing
@@ -357,9 +374,30 @@ def run_workflow(spec: Spec, seed: dict[str, Any] | None = None,
                 result = _exec_subworkflow(node, state, sub_runner)
             elif node.type == "parallel_fanout":
                 result = _exec_parallel(node, state, sub_runner)
+            elif node.type == "agent":
+                result = _exec_agent(node, state, provider=provider)
             else:
                 result = EXECUTORS[node.type](node, state)
         except Exception as e:
+            on_error = node.config.get("on_error")
+            if on_error == "skip":
+                yield {"event": "node_end", "node": nid, "status": "skipped", "error": str(e)}
+                targets = out_edges[nid]
+                for t in targets:
+                    reached.add(t)
+                executed.add(nid)
+                continue
+            if on_error == "fallback":
+                fb = node.config.get("fallback_value", "")
+                state[node.config.get("as", "result")] = fb
+                result = {"fallback": True, "value": fb, "original_error": str(e)}
+                yield {"event": "messages", "node": nid, "result": result}
+                yield {"event": "node_end", "node": nid, "status": "fallback"}
+                targets = out_edges[nid]
+                for t in targets:
+                    reached.add(t)
+                executed.add(nid)
+                continue
             yield {"event": "node_end", "node": nid, "status": "error", "error": str(e)}
             yield {"event": "error", "errors": [f"{nid}: {e}"]}
             return

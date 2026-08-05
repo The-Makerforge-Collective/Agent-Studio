@@ -453,6 +453,129 @@ def query_knowledge(q: str, k: int = 3, p: Principal = Depends(get_principal)) -
     return {"query": q, "results": knowledge_mod.PgKnowledge().search(p.tenant_id, q, k)}
 
 
+# ----------------------------- LLM providers (tenant-scoped) -----------------------------
+class ProviderBody(BaseModel):
+    name: str
+    provider_type: str = "openai"
+    base_url: str = ""
+    api_key: str = ""
+    is_default: bool = False
+
+
+@app.post("/api/v1/settings/providers")
+def create_provider(body: ProviderBody, p: Principal = Depends(require_role("editor"))) -> dict[str, Any]:
+    with db.session() as s:
+        if body.is_default:
+            for row in s.scalars(db.select(db.LlmProvider).where(
+                    db.LlmProvider.tenant_id == p.tenant_id, db.LlmProvider.is_default == True)).all():  # noqa: E712
+                row.is_default = False
+        prov = db.LlmProvider(tenant_id=p.tenant_id, name=body.name,
+                              provider_type=body.provider_type, base_url=body.base_url,
+                              api_key_encrypted=db.encrypt_api_key(body.api_key) if body.api_key else "",
+                              is_default=body.is_default, created_by=p.email)
+        s.add(prov)
+        s.commit()
+        return {"id": prov.id, "name": prov.name, "provider_type": prov.provider_type,
+                "base_url": prov.base_url, "is_default": prov.is_default}
+
+
+@app.get("/api/v1/settings/providers")
+def list_providers(p: Principal = Depends(get_principal)) -> list[dict[str, Any]]:
+    with db.session() as s:
+        rows = s.scalars(db.select(db.LlmProvider).where(
+            db.LlmProvider.tenant_id == p.tenant_id)).all()
+        return [{"id": r.id, "name": r.name, "provider_type": r.provider_type,
+                 "base_url": r.base_url, "is_default": r.is_default,
+                 "created_by": r.created_by, "created_at": r.created_at} for r in rows]
+
+
+class ProviderUpdate(BaseModel):
+    name: str | None = None
+    provider_type: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    is_default: bool | None = None
+
+
+@app.put("/api/v1/settings/providers/{pid}")
+def update_provider(pid: str, body: ProviderUpdate,
+                    p: Principal = Depends(require_role("editor"))) -> dict[str, Any]:
+    with db.session() as s:
+        prov = s.get(db.LlmProvider, pid)
+        if not prov or prov.tenant_id != p.tenant_id:
+            raise HTTPException(404, "provider not found")
+        if body.name is not None:
+            prov.name = body.name
+        if body.provider_type is not None:
+            prov.provider_type = body.provider_type
+        if body.base_url is not None:
+            prov.base_url = body.base_url
+        if body.api_key:
+            prov.api_key_encrypted = db.encrypt_api_key(body.api_key)
+        if body.is_default is not None:
+            if body.is_default:
+                for row in s.scalars(db.select(db.LlmProvider).where(
+                        db.LlmProvider.tenant_id == p.tenant_id,
+                        db.LlmProvider.is_default == True)).all():  # noqa: E712
+                    row.is_default = False
+            prov.is_default = body.is_default
+        s.commit()
+        return {"id": prov.id, "name": prov.name, "provider_type": prov.provider_type,
+                "base_url": prov.base_url, "is_default": prov.is_default}
+
+
+@app.delete("/api/v1/settings/providers/{pid}")
+def delete_provider(pid: str, p: Principal = Depends(require_role("editor"))) -> dict[str, str]:
+    with db.session() as s:
+        prov = s.get(db.LlmProvider, pid)
+        if not prov or prov.tenant_id != p.tenant_id:
+            raise HTTPException(404, "provider not found")
+        s.delete(prov)
+        s.commit()
+        return {"status": "deleted"}
+
+
+@app.post("/api/v1/settings/providers/{pid}/test")
+def test_provider(pid: str, p: Principal = Depends(require_role("editor"))) -> dict[str, Any]:
+    with db.session() as s:
+        prov = s.get(db.LlmProvider, pid)
+        if not prov or prov.tenant_id != p.tenant_id:
+            raise HTTPException(404, "provider not found")
+        if not prov.api_key_encrypted:
+            return {"status": "error", "message": "no API key configured"}
+        key = db.decrypt_api_key(prov.api_key_encrypted)
+    import httpx
+    try:
+        if prov.provider_type == "anthropic":
+            base = prov.base_url or "https://api.anthropic.com"
+            resp = httpx.post(f"{base.rstrip('/')}/v1/messages",
+                              headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                                       "content-type": "application/json"},
+                              json={"model": "claude-sonnet-4-20250514", "max_tokens": 1,
+                                    "messages": [{"role": "user", "content": "hi"}]},
+                              timeout=15)
+        else:
+            base = prov.base_url or "https://api.openai.com/v1"
+            resp = httpx.get(f"{base.rstrip('/')}/models",
+                             headers={"Authorization": f"Bearer {key}"}, timeout=15)
+        if resp.status_code < 300:
+            return {"status": "ok", "message": "connected"}
+        return {"status": "error", "message": f"HTTP {resp.status_code}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def _resolve_provider(tenant_id: str) -> dict[str, str] | None:
+    with db.session() as s:
+        prov = s.scalar(db.select(db.LlmProvider).where(
+            db.LlmProvider.tenant_id == tenant_id, db.LlmProvider.is_default == True))  # noqa: E712
+        if not prov or not prov.api_key_encrypted:
+            return None
+        return {"provider_type": prov.provider_type,
+                "base_url": prov.base_url,
+                "api_key": db.decrypt_api_key(prov.api_key_encrypted)}
+
+
 # ----------------------------- runs -----------------------------
 class RunRequest(Spec):
     seed: dict[str, Any] = {}
@@ -518,12 +641,13 @@ def _persist_pause(ev: dict, spec: Spec, tenant_id: str, run_id: str) -> str:
         return ar.id
 
 
-async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
+async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str,
+                      workflow_id: str = "", provider: dict | None = None):
     def sse(ev: dict) -> str:
         return f"event: {ev['event']}\ndata: {json.dumps({k: v for k, v in ev.items() if k != 'event'})}\n\n"
 
     with db.session() as s:
-        run = db.Run(tenant_id=tenant_id)
+        run = db.Run(tenant_id=tenant_id, workflow_id=workflow_id)
         s.add(run)
         s.commit()
         run_id = run.id
@@ -544,9 +668,10 @@ async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
     starts: dict[str, tuple[float, str]] = {}
     seq = 0
     final_status = "completed"
+    error_msg = ""
     for ev in run_workflow(spec, seed, runtime=runtime, namespace=namespace,
                            memory=mem, tenant_id=tenant_id, knowledge=know,
-                           sub_runner=sub_runner):
+                           sub_runner=sub_runner, provider=provider):
         et = ev.get("event")
         if et == "paused":
             req_id = _persist_pause(ev, spec, tenant_id, run_id)
@@ -567,12 +692,17 @@ async def _run_stream(spec: Spec, seed: dict[str, Any], tenant_id: str):
                 s.commit()
             if ev.get("status") == "error":
                 final_status = "failed"
+                error_msg = ev.get("error", "")
+        elif et == "error":
+            error_msg = "; ".join(ev.get("errors", []))
         yield sse(ev)
         await asyncio.sleep(0)
     with db.session() as s:
         r = s.get(db.Run, run_id)
         if r:
             r.status = final_status
+            r.finished_at = time.time()
+            r.error_message = error_msg
             s.commit()
 
 
@@ -593,7 +723,10 @@ async def run_deployed_workflow(wid: str, body: InvokeBody,
     with db.session() as s:
         w = _accessible_workflow(s, wid, p)
         spec = Spec(**w.spec)
-    return StreamingResponse(_run_stream(spec, body.seed, p.tenant_id), media_type="text/event-stream")
+    provider = _resolve_provider(p.tenant_id)
+    return StreamingResponse(_run_stream(spec, body.seed, p.tenant_id,
+                                         workflow_id=wid, provider=provider),
+                             media_type="text/event-stream")
 
 
 @app.get("/api/v1/workflows/{wid}/widget", response_class=HTMLResponse)
@@ -654,10 +787,17 @@ def list_schedules(p: Principal = Depends(get_principal)) -> list[dict[str, Any]
 
 
 @app.get("/api/v1/runs")
-def list_runs(p: Principal = Depends(get_principal)) -> list[dict[str, Any]]:
+def list_runs(workflow_id: str | None = None, limit: int = 50, offset: int = 0,
+              p: Principal = Depends(get_principal)) -> list[dict[str, Any]]:
     with db.session() as s:
-        rows = s.scalars(db.select(db.Run).where(db.Run.tenant_id == p.tenant_id)).all()
-        return [{"id": r.id, "status": r.status, "started_at": r.started_at} for r in rows]
+        q = db.select(db.Run).where(db.Run.tenant_id == p.tenant_id)
+        if workflow_id:
+            q = q.where(db.Run.workflow_id == workflow_id)
+        q = q.order_by(db.Run.started_at.desc()).offset(offset).limit(limit)
+        rows = s.scalars(q).all()
+        return [{"id": r.id, "workflow_id": r.workflow_id, "status": r.status,
+                 "started_at": r.started_at, "finished_at": r.finished_at,
+                 "error_message": r.error_message} for r in rows]
 
 
 class ApproveBody(BaseModel):
