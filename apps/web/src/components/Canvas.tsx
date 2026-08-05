@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -15,6 +15,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { NodeErrorMap, ConfigFieldSchema } from "@/lib/types";
 import CustomNode from "./CustomNode";
 
 const nodeTypes: NodeTypes = {
@@ -28,7 +29,8 @@ interface CanvasProps {
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
   onNodeSelect: (node: Node | null) => void;
-  onDrop: (type: string, config: Record<string, unknown>, position: { x: number; y: number }) => void;
+  onDrop: (type: string, config: Record<string, unknown>, position: { x: number; y: number }, configSchema?: Record<string, ConfigFieldSchema>) => void;
+  nodeErrorMap?: NodeErrorMap;
 }
 
 export default function Canvas({
@@ -39,8 +41,18 @@ export default function Canvas({
   onConnect,
   onNodeSelect,
   onDrop,
+  nodeErrorMap,
 }: CanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const enrichedNodes = useMemo(() => {
+    if (!nodeErrorMap || nodeErrorMap.size === 0) return nodes;
+    return nodes.map((n) => {
+      const errEntry = nodeErrorMap.get(n.id);
+      if (!errEntry) return n;
+      return { ...n, data: { ...n.data, _errors: errEntry.errors, _unreachable: errEntry.unreachable } };
+    });
+  }, [nodes, nodeErrorMap]);
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -52,14 +64,14 @@ export default function Canvas({
       event.preventDefault();
       const raw = event.dataTransfer.getData("application/agent-studio-node");
       if (!raw) return;
-      const { type, config } = JSON.parse(raw);
+      const { type, config, configSchema } = JSON.parse(raw);
       const bounds = wrapperRef.current?.getBoundingClientRect();
       if (!bounds) return;
       const position = {
         x: event.clientX - bounds.left,
         y: event.clientY - bounds.top,
       };
-      onDrop(type, config, position);
+      onDrop(type, config, position, configSchema);
     },
     [onDrop]
   );
@@ -78,7 +90,7 @@ export default function Canvas({
   return (
     <div ref={wrapperRef} className="h-full flex-1">
       <ReactFlow
-        nodes={nodes}
+        nodes={enrichedNodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

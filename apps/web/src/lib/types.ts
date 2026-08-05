@@ -65,3 +65,13 @@ export interface NodeTypeInfo {
   defaultConfig: Record<string, unknown>;
   outputs?: string[];
 }
+
+export interface ConfigFieldSchema {
+  type: string;
+  default?: unknown;
+  items?: { type: string };
+  enum?: string[];
+  description?: string;
+}
+
+export type NodeErrorMap = Map<string, { errors: string[]; unreachable: boolean }>;
